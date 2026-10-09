@@ -9,6 +9,11 @@ GeoSathi Atlas is the map-first frontend for the GeoSathi AI hackathon project. 
 - Independent map layers for imagery-search footprints, road hazards, and survey/infrastructure corridors.
 - Feature selection, map navigation, evidence inspection, coordinate copying, and compact layer controls.
 - An isolated typed API boundary ready for the vision-language and geospatial teams to confirm their contract.
+- A World-to-Street judge demo with separate real-location and deterministic demo journeys.
+
+## World-to-Street demo
+
+The product opens at a global OSM map overview. `LOCATE ME` requests browser geolocation only after the user activates it, retains the captured coordinate/accuracy, and labels locality resolution as unavailable until a reverse-geocoder is configured. `PREVIEW DEMO JOURNEY` instead follows a deterministic Bengaluru camera path, then opens a **DEMO PANORAMA — NOT VERIFIED AT THIS LOCATION** fallback. No Mapillary token, image ID, or verified street coverage is currently configured.
 
 ## Design principles
 
@@ -45,6 +50,10 @@ npm run build
 The frontend deliberately does not invent a working integration. The typed, abortable request boundary is in `src/lib/api/client.ts`; demo fixtures remain isolated in `src/lib/demo/fixtures.ts`. Before wiring the service, the backend owner should confirm the search path, request body, response schema, evidence URLs, geometry format, timestamps, and provenance fields.
 
 Never place database credentials, model keys, or private tokens in frontend code or a `NEXT_PUBLIC_` variable.
+
+### Discovery result contract
+
+The frontend’s future search response is typed in `src/types/geo.ts`. A result contains the image-tile identifier and footprint, grounded visual objects, referenced OSM feature IDs/geometries, explicit spatial predicates and distances, plus an export-ready `FeatureCollection`. `src/lib/demo/discovery.ts` is a deterministic demonstration of this contract—not model output or a spatial join against live OSM data.
 
 ## OpenStreetMap use
 

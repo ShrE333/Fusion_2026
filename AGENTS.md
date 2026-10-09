@@ -1,17 +1,21 @@
 # GeoSathi Atlas
 
 ## Purpose
-Map-first research interface for natural-language imagery retrieval, road-hazard evidence, and backend-supplied geospatial features.
+Map-first GeoAI discovery interface for natural-language imagery retrieval, object grounding, vector spatial analysis, and exportable geographic results. Road hazards are a supporting, not primary, workflow.
 
 ## Design direction
 Preserve the cartographic workstation character: restrained paper/charcoal/survey-green palette, vermilion reserved for hazards, compact technical metadata, and a visually dominant map. Do not turn this into a generic dashboard or a fake monitoring system.
 
+The default product entry is the World-to-Street Atlas journey. Keep global exploration, explicit browser geolocation, the deterministic judge journey, and the labelled street-level fallback visually cohesive. A local panorama is always a demo unless a configured imagery provider has returned verified coverage.
+
 ## GIS and data rules
 - All displayed geometry must be valid typed GeoJSON and retain its provenance.
 - Demo fixtures are synthetic, live in `src/lib/demo`, and must always be labelled as such.
+- Preserve the relationship between imagery retrieval and vector spatial analysis: expose query intent, grounded objects, imagery tile/footprint, OSM feature references, predicates, distances, and typed GeoJSON exports when the backend supplies them.
 - Use the configurable OSM raster tile URL only as a street basemap, never label it imagery, and retain visible OpenStreetMap attribution.
 - Do not fetch Overpass/OSM data in response to map movement. Infrastructure overlays belong to a backend or scoped ingestion pipeline.
 - Future imagery layers require their own attribution and must be enabled only when a genuine configured source exists.
+- Do not substitute a demo location for captured GPS coordinates. When reverse geocoding is unavailable, show real coordinates and say that the locality is unavailable.
 
 ## API boundary
 `src/lib/api/client.ts` is the centralized client. Backend contracts are awaiting confirmation; do not fabricate endpoint success or expose secrets through public environment variables.
