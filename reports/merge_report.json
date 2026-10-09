@@ -1,0 +1,74 @@
+{
+  "ds2_conversion": {
+    "train": {
+      "images": 1906,
+      "pothole_files": 1876,
+      "pothole_boxes": 5149,
+      "non_pothole_boxes": 1415,
+      "empty_after_filter": 30,
+      "skipped_malformed": 0
+    },
+    "valid": {
+      "images": 542,
+      "pothole_files": 533,
+      "pothole_boxes": 1444,
+      "non_pothole_boxes": 409,
+      "empty_after_filter": 9,
+      "skipped_malformed": 0
+    },
+    "test": {
+      "images": 274,
+      "pothole_files": 270,
+      "pothole_boxes": 677,
+      "non_pothole_boxes": 184,
+      "empty_after_filter": 4,
+      "skipped_malformed": 0
+    }
+  },
+  "merge": {
+    "train": {
+      "ds1_added": 371,
+      "ds2_added": 1876,
+      "ds1_dedup_skipped": 1,
+      "ds2_dedup_skipped": 0,
+      "ds2_empty_label_skipped": 30
+    },
+    "valid": {
+      "ds1_added": 105,
+      "ds2_added": 533,
+      "ds1_dedup_skipped": 1,
+      "ds2_dedup_skipped": 0,
+      "ds2_empty_label_skipped": 9
+    },
+    "test": {
+      "ds1_added": 55,
+      "ds2_added": 270,
+      "ds1_dedup_skipped": 0,
+      "ds2_dedup_skipped": 0,
+      "ds2_empty_label_skipped": 4
+    }
+  },
+  "validation": {
+    "train": {
+      "images": 2247,
+      "labels": 2247,
+      "missing_label_files": 0,
+      "empty_label_files": 0,
+      "total_boxes": 6968
+    },
+    "valid": {
+      "images": 638,
+      "labels": 638,
+      "missing_label_files": 0,
+      "empty_label_files": 0,
+      "total_boxes": 1948
+    },
+    "test": {
+      "images": 325,
+      "labels": 325,
+      "missing_label_files": 0,
+      "empty_label_files": 0,
+      "total_boxes": 870
+    }
+  }
+}

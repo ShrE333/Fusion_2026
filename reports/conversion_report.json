@@ -1,0 +1,38 @@
+{
+  "source": "C:\\PROJECTS\\Fusion\\dataset_raw",
+  "destination": "C:\\PROJECTS\\Fusion\\dataset",
+  "splits": {
+    "train": {
+      "images": 372,
+      "labels": 372,
+      "boxes": 1826,
+      "empty_images": 0,
+      "degenerate_boxes": 0,
+      "out_of_range": 62
+    },
+    "valid": {
+      "images": 106,
+      "labels": 106,
+      "boxes": 514,
+      "empty_images": 0,
+      "degenerate_boxes": 0,
+      "out_of_range": 19
+    },
+    "test": {
+      "images": 55,
+      "labels": 55,
+      "boxes": 193,
+      "empty_images": 0,
+      "degenerate_boxes": 0,
+      "out_of_range": 11
+    }
+  },
+  "total": {
+    "images": 533,
+    "labels": 533,
+    "boxes": 2533,
+    "empty_images": 0,
+    "degenerate_boxes": 0,
+    "out_of_range": 92
+  }
+}

@@ -1,0 +1,71 @@
+# =============================================================================
+# GeoSathi AI — .dockerignore
+# Exclude datasets, checkpoints, caches, and training artifacts from Docker image
+# =============================================================================
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Version Control
+.git/
+.gitignore
+
+# Secrets & Environment variables
+.env
+.env.*
+*.pem
+*.key
+secrets.toml
+
+# Datasets and raw files (Crucial: do NOT bundle gigabytes of dataset images into Docker)
+*.zip
+*.tar
+*.tar.gz
+dataset/
+dataset_raw/
+dataset2_raw/
+dataset_merged/
+*.cache
+labels.cache
+
+# Training runs, checkpoints & logs
+runs/
+outputs/
+plots/
+wandb/
+*.log
+.system_generated/
+
+# Heavy PyTorch Checkpoints (Only pothole_detector.onnx is needed)
+*.pt
+models/*.pt
+models/best.onnx
+models/best_old_ds1.pt
+weights/
+
+# Training & Development Scripts
+scripts/train*
+scripts/build*
+scripts/convert*
+scripts/evaluate*
+
+# Streamlit App (API container runs FastAPI only)
+app.py
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

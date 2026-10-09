@@ -1,0 +1,21 @@
+{
+  "model": "C:\\PROJECTS\\Fusion\\yolo11n.pt",
+  "data": "C:\\PROJECTS\\Fusion\\dataset_merged\\data.yaml",
+  "epochs": 60,
+  "batch": 16,
+  "imgsz": 640,
+  "patience": 15,
+  "device": "0",
+  "run_name": "pothole_merged_20261009_165111",
+  "save_dir": "C:\\PROJECTS\\Fusion\\runs\\train\\pothole_merged_20261009_165111",
+  "best_pt": "C:\\PROJECTS\\Fusion\\models\\best.pt",
+  "last_pt": "C:\\PROJECTS\\Fusion\\models\\last.pt",
+  "timestamp": "2026-10-09T17:16:39.957715",
+  "val_metrics": {
+    "metrics/precision(B)": 0.7782337702836607,
+    "metrics/recall(B)": 0.6216632443531828,
+    "metrics/mAP50(B)": 0.70775785540023,
+    "metrics/mAP50-95(B)": 0.3744870560580797,
+    "fitness": 0.3744870560580797
+  }
+}
