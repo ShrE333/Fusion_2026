@@ -1,12 +1,19 @@
-# Module handoff (proposed v0.1)
+# Fusion 2026 integration contract (v0.2)
 
-WAHA -> Member 1 adapter: `POST /webhooks/waha` (HMAC signed, `message` event).
-Member 1 -> Member 2 (future): `POST /search` with `query_id`, `query`, `location`, then PostGIS and GeoJSON results.
-Member 1 -> Member 3 (future): `POST /road/infer` with `report_id`, a **secure media URL or uploaded bytes** and user pin. This first-commit adapter's local `image_path` contract is appropriate *only on the same host/volume*; **do not use it across AWS/GCP**.
-Member 2 -> Member 4: `GET /results/{id}`, GeoJSON and shareable map link (not implemented here).
+## WhatsApp (Member 1)
+Incoming WAHA `message` signed webhooks -> `/webhooks/waha`; list rows use `rowId` infrastructure / road. If `/api/sendList` fails (including unsupported edition/engine), text menu is used. Session ID is taken from the webhook. No model output is fabricated.
 
-Road AI must return actual class, confidence, bbox, model_version. GIS should determine whether a reported location is near mapped roads and mark status accordingly, without pretending OSM verified the hole itself.
+## VLM (Member 1)
+`POST /search` on private SkyCLIP service expects `{"query":"...","top_k":5,"bbox":[minlon,minlat,maxlon,maxlat]}` and Bearer token. Returns top ranked georeferenced image tile metadata and cosine similarities (not object detections). Index is computed offline using image+text encoders from the SAME checkpoint.
 
-Infrastructure VLM should return ranked *tile IDs*, image similarity scores, and existing geographic bounds. Member 2 applies PostGIS geometry relationships and emits real GeoJSON. Do not present CLIP scores as object detection confidence.
+## AWS GIS (Member 2)
+Integrates SkyCLIP ranked tile IDs with PostGIS/OSM, performs actual geometry operations and provides verified/candidate geographic features; `INFRA_SEARCH_URL` in WhatsApp expects `{"query_id":"...","query":"...","location":{"lat":...,"lon":...}}`.
 
-Before the second commit: agree on image handoff (S3/GCS signed links or multipart upload), auth between services, radius/area schema, and map result URL.
+## Road hazard (Member 3)
+YOLO ONNX worker detects potholes/cracks from authenticated media, returns classes/bboxes/scores. Cross-cloud paths like `/data/media/image.jpg` are not accessible: arrange private object storage with signed URLs or a secure binary upload contract before setting `ROAD_INFERENCE_URL`.
+
+## Frontend (Member 4)
+Existing frontend `frontend` branch is an independent root-level Next.js app with no common ancestor with main. Migrate to `apps/frontend/` from common base branch before integration. Frontend currently expects `POST /search` => `{query,results:[{id,kind,title,geometry,source,status,score,...}]}`. This response is NOT the SkyCLIP service output; member 2 must translate to final GeoJSON/AtlasFeature schema.
+
+## Deployment
+GCP EasyPanel: current WAHA GOWS and WhatsApp FastAPI. Model inference in separate container/host as resources permit. Model checkpoint and imagery never stored in git. Test native list capability on actual WAHA edition; text fallback is intentional.
