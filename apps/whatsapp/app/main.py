@@ -86,6 +86,11 @@ async def finish_search(session,chat,search_id,query,loc):
         await send_text(session,chat,f'⚠️ Search {search_id} could not finish. Please retry later.')
 
 
+def is_private_chat(chat_id: str) -> bool:
+    """Allow only private WhatsApp IDs; never broadcast/status/group/channel."""
+    return isinstance(chat_id, str) and chat_id.endswith(("@c.us", "@s.whatsapp.net", "@lid"))
+
+
 async def process_event(data):
     if data.get('event')!='message': return
     payload=data.get('payload') or {}
@@ -93,7 +98,7 @@ async def process_event(data):
     chat=payload.get('from')
     session=data.get('session')
     msg_id=payload.get('id') or data.get('id')
-    if not chat or not session or not msg_id or chat.endswith('@g.us'): return
+    if not chat or not session or not msg_id or not is_private_chat(chat): return
     if not store.mark_once(str(session)+':'+str(msg_id)): return
     body=(payload.get('body') or '').strip()
     command=extract_selection(payload) or body.lower()
@@ -101,7 +106,7 @@ async def process_event(data):
     media=payload.get('media') or {}
     loc=extract_location(payload)
     reply=None
-    if command in {'hi','hello','start','menu','cancel'}:
+    if command in {'geosathi','hi','hello','start','menu','cancel'}:
         store.set_chat(chat,'MENU')
         reply=MENU
     elif state=='MENU':
@@ -177,5 +182,5 @@ async def webhook(request:Request, background_tasks:BackgroundTasks):
         raise HTTPException(status_code=401,detail='Invalid webhook signature')
     try: data=json.loads(body)
     except json.JSONDecodeError: raise HTTPException(status_code=400,detail='Invalid JSON')
-    if data.get('event')=='message': background_tasks.add_task(process_event,data)
+    if data.get('event')=='message' and is_private_chat((data.get('payload') or {}).get('from')) and not (data.get('payload') or {}).get('fromMe'): background_tasks.add_task(process_event,data)
     return {'accepted':True}

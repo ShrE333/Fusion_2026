@@ -3,15 +3,23 @@ from urllib.parse import urlparse
 import httpx
 from .config import settings
 
+def require_private_chat(chat_id: str) -> None:
+    """Fail closed before ANY WAHA outbound sendText/sendList HTTP request."""
+    if not isinstance(chat_id, str) or not chat_id.endswith(("@c.us", "@s.whatsapp.net", "@lid")):
+        raise ValueError("Blocked WAHA send: destination is not a private WhatsApp chat")
+
+
 def headers():
     return {'X-Api-Key': settings.waha_api_key}
 
 async def send_text(session: str, chat_id: str, message: str):
+    require_private_chat(chat_id)
     async with httpx.AsyncClient(timeout=20) as client:
         response=await client.post(f'{settings.waha_url.rstrip("/")}/api/sendText', json={'session':session,'chatId':chat_id,'text':message},headers=headers())
         response.raise_for_status()
 
 async def send_menu(session: str, chat_id: str, fallback_text: str):
+    require_private_chat(chat_id)
     # sendList may be unavailable with some WAHA engines/editions. Always preserve fallback.
     data={'session':session,'chatId':chat_id,'reply_to':None,'message':{
         'title':'GeoSathi AI','description':'Select a service to continue',
