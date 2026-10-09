@@ -1,68 +1,86 @@
 "use client";
-import { useCallback, useRef, useState } from "react";
-import { Crosshair, Database, Download, Eye, Map, Navigation, Search, X } from "lucide-react";
-import { AtlasMap, type CameraJourney, type JourneyStage } from "@/components/map/atlas-map";
+
+import { useRef, useState } from "react";
+import { Crosshair, Database, Download, Eye, Map, Search, X } from "lucide-react";
+import { AtlasMap, type CameraTarget } from "@/components/map/atlas-map";
 import { AtlasNav } from "@/components/shell/atlas-nav";
+import { useAtlasLocation } from "@/components/shell/location-context";
 import { config } from "@/lib/config";
 import { runDiscovery, supportedDemoQuery, type DiscoveryMode } from "@/lib/discovery/service";
 import type { AtlasFeature, DiscoveryResult, SearchResponse } from "@/types/geo";
 
-const demoCoordinates: [number, number] = [77.5946, 12.9716];
+const puneCoordinates: [number, number] = [73.8567, 18.5204];
 const examples = [supportedDemoQuery, "Locate unpaved roads intersecting cleared forest patches", "Find built-up areas near drainage channels"];
-const stages: JourneyStage[] = ["WORLD OVERVIEW", "CONTINENT", "COUNTRY", "REGION", "LOCAL AREA", "STREET LEVEL"];
-type View = "global" | "journey" | "street" | "local"; type State = "idle" | "loading" | "success" | "empty" | "error";
+type State = "idle" | "loading" | "success" | "empty" | "error";
 const vectors = (results: DiscoveryResult[]): AtlasFeature[] => { const seen = new Set<string>(); return results.flatMap((r) => r.osmFeatures).filter((f) => !seen.has(f.osmId) && Boolean(seen.add(f.osmId))).map((f) => ({ id: f.osmId, kind: "infrastructure", title: f.type, geometry: f.geometry, source: "Result-provided OSM vector" })); };
 const exportable = (r: SearchResponse | null) => Boolean(r?.export.type === "FeatureCollection" && r.export.features.every((f) => f?.type === "Feature" && f.geometry && ["Point", "LineString", "Polygon"].includes(f.geometry.type)));
 
 export default function Home() {
-  const [query, setQuery] = useState(supportedDemoQuery), [submitted, setSubmitted] = useState(supportedDemoQuery), [mode, setMode] = useState<DiscoveryMode>(config.discoveryMode), [response, setResponse] = useState<SearchResponse | null>(null), [state, setState] = useState<State>("idle"), [requestError, setRequestError] = useState(""), [view, setView] = useState<View>("global"), [stage, setStage] = useState<JourneyStage>("WORLD OVERVIEW"), [journey, setJourney] = useState<CameraJourney>(), [journeyId, setJourneyId] = useState(0), [locationLabel, setLocationLabel] = useState("Global Atlas"), [locationDetail, setLocationDetail] = useState("No location captured"), [locationState, setLocationState] = useState<"idle" | "requesting" | "captured" | "unavailable">("idle"), [streetStatus, setStreetStatus] = useState("Coverage not checked"), [selected, setSelected] = useState<DiscoveryResult>(), [showDiscovery, setShowDiscovery] = useState(false), [error, setError] = useState("");
-  const sequence = useRef(0), requestId = useRef(0), locationRequestId = useRef(0), controller = useRef<AbortController | undefined>(undefined); const [userLocation, setUserLocation] = useState<{ id: number; coordinates: [number, number] }>(); const results = response?.results ?? [], isDemo = mode === "demo";
-  const startJourney = (target: [number, number], demo: boolean, detail?: string) => { locationRequestId.current++; sequence.current++; setJourneyId(sequence.current); setError(""); setSelected(undefined); setShowDiscovery(false); setView("journey"); setStage("WORLD OVERVIEW"); setStreetStatus("Checking configured street-imagery coverage…"); setLocationLabel(demo ? "DEMO LOCATION · Bengaluru" : "Captured coordinates"); setLocationDetail(detail || (demo ? "Demo hierarchy: Asia · India · Karnataka · Bengaluru" : `${target[1].toFixed(5)}° N · ${target[0].toFixed(5)}° E · locality unavailable`)); setJourney({ id: sequence.current, target, demo }); };
-  const locateMe = () => { const locationId = ++locationRequestId.current; if (!navigator.geolocation) { setLocationState("unavailable"); setError("Geolocation is unavailable in this browser. Use Preview demo journey instead."); return; } setError(""); setLocationState("requesting"); navigator.geolocation.getCurrentPosition((p) => { if (locationId !== locationRequestId.current) return; const target: [number, number] = [p.coords.longitude, p.coords.latitude]; setJourney(undefined); setUserLocation({ id: locationId, coordinates: target }); setLocationState("captured"); setLocationLabel("YOUR CURRENT LOCATION"); setLocationDetail(`${target[1].toFixed(5)}° N · ${target[0].toFixed(5)}° E · ±${Math.round(p.coords.accuracy)} m · ${new Date(p.timestamp).toLocaleTimeString()} · locality unavailable`); }, (reason) => { if (locationId !== locationRequestId.current) return; setLocationState("unavailable"); const message = reason.code === 1 ? "Location permission was denied. You can still use Preview demo journey." : reason.code === 3 ? "Location request timed out. Check your device signal and retry, or use Preview demo journey." : "Location is unavailable on this device. You can still use Preview demo journey."; setError(message); }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }); };
-  const completeJourney = useCallback(() => {
-    setJourney(undefined);
+  const mode: DiscoveryMode = config.discoveryMode;
+  const { location, setLocation, clearLocation } = useAtlasLocation();
+  const [query, setQuery] = useState(supportedDemoQuery), [submitted, setSubmitted] = useState(supportedDemoQuery), [response, setResponse] = useState<SearchResponse | null>(null), [state, setState] = useState<State>("idle"), [requestError, setRequestError] = useState(""), [cameraTarget, setCameraTarget] = useState<CameraTarget>(), [cameraId, setCameraId] = useState(0), [locationLabel, setLocationLabel] = useState(location ? "YOUR CURRENT LOCATION" : "PUNE, MAHARASHTRA · DEFAULT VIEW"), [locationDetail, setLocationDetail] = useState(location ? `${location.coordinates[1].toFixed(5)}° N · ${location.coordinates[0].toFixed(5)}° E · ±${Math.round(location.accuracy)} m · ${new Date(location.timestamp).toLocaleTimeString()} · locality unavailable` : "18.52040° N · 73.85670° E · home area"), [mapContext, setMapContext] = useState(""), [locationState, setLocationState] = useState<"idle" | "requesting" | "captured" | "unavailable">(location ? "captured" : "idle"), [selected, setSelected] = useState<DiscoveryResult>(), [showDiscovery, setShowDiscovery] = useState(false), [error, setError] = useState("");
+  const requestId = useRef(0), locationRequestId = useRef(0), controller = useRef<AbortController | undefined>(undefined);
+  const results = response?.results ?? [], isDemo = mode === "demo";
 
-    if (mode === "api") {
-      setStreetStatus(
-        "SkyCLIP imagery candidate · GIS verification pending"
-      );
-      setView("local");
-      setStage("LOCAL AREA");
-      setShowDiscovery(true);
-      return;
+  const locateMe = () => {
+    const locationId = ++locationRequestId.current;
+    if (!navigator.geolocation) { setLocationState("unavailable"); setError("Geolocation is unavailable in this browser. You can still explore the current map or return to Pune."); return; }
+    setError(""); setLocationState("requesting");
+    navigator.geolocation.getCurrentPosition((position) => {
+      if (locationId !== locationRequestId.current) return;
+      const coordinates: [number, number] = [position.coords.longitude, position.coords.latitude];
+      const nextCameraId = cameraId + 1;
+      setLocation({ coordinates, accuracy: position.coords.accuracy, timestamp: position.timestamp });
+      setCameraId(nextCameraId); setCameraTarget({ id: nextCameraId, coordinates, zoom: 13 }); setLocationState("captured"); setLocationLabel("YOUR CURRENT LOCATION"); setMapContext("");
+      setLocationDetail(`${coordinates[1].toFixed(5)}° N · ${coordinates[0].toFixed(5)}° E · ±${Math.round(position.coords.accuracy)} m · ${new Date(position.timestamp).toLocaleTimeString()} · locality unavailable`);
+    }, (reason) => {
+      if (locationId !== locationRequestId.current) return;
+      setLocationState("unavailable");
+      setError(reason.code === 1 ? "Location permission was denied. The map has not moved." : reason.code === 3 ? "Location request timed out. Check your device signal and retry. The map has not moved." : "Your position is unavailable. The map has not moved; you can retry or return to Pune.");
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  };
+
+  const resetToPune = () => {
+    locationRequestId.current++;
+    clearLocation();
+    const nextCameraId = cameraId + 1;
+    setCameraId(nextCameraId); setCameraTarget({ id: nextCameraId, coordinates: puneCoordinates, zoom: 12.2 });
+    setLocationState("idle"); setLocationLabel("PUNE, MAHARASHTRA · DEFAULT VIEW"); setLocationDetail("18.52040° N · 73.85670° E · home area"); setMapContext(""); setSelected(undefined); setError("");
+  };
+
+  const selectResult = (result: DiscoveryResult) => {
+    setSelected(result); setShowDiscovery(true);
+    if (!location) {
+      setLocationLabel(isDemo ? "DEMO FIXTURE · BENGALURU" : "SELECTED BACKEND RESULT");
+      setLocationDetail(isDemo ? "Synthetic result geometry · not a current location or Pune data" : "Map focus uses coordinates supplied by the backend geometry");
     }
+    setMapContext(isDemo ? "Map focused on synthetic Bengaluru fixture geometry · not Pune data" : "Map focused on geometry supplied by the backend result");
+  };
 
-    setStreetStatus("Coverage unavailable — showing local demo panorama");
-    setView("street");
-    setStage("STREET LEVEL");
-  }, [mode]);
-  const submitQuery = async (value = query) => { const text = value.trim(); if (!text || state === "loading") return; controller.current?.abort(); const id = ++requestId.current, abort = new AbortController(); controller.current = abort; setSubmitted(text); setState("loading"); setRequestError(""); setSelected(undefined); setResponse(null); setShowDiscovery(true); try { const next = await runDiscovery(mode, text, abort.signal); if (id !== requestId.current) return; setResponse(next); setState(next.results.length ? "success" : "empty");
-    if (isDemo) {
-      startJourney(demoCoordinates, true);
-    } else if (next.results[0]?.bounds) {
-      const [minLon, minLat, maxLon, maxLat] = next.results[0].bounds;
-
-      const target: [number, number] = [
-        (minLon + maxLon) / 2,
-        (minLat + maxLat) / 2,
-      ];
-
-      startJourney(
-        target,
-        false,
-        `${target[1].toFixed(5)}° N · ${target[0].toFixed(5)}° E · ${next.results[0].imageTileId}`,
-      );
+  const submitQuery = async (value = query) => {
+    const text = value.trim(); if (!text || state === "loading") return;
+    controller.current?.abort(); const id = ++requestId.current, abort = new AbortController(); controller.current = abort;
+    setSubmitted(text); setState("loading"); setRequestError(""); setSelected(undefined); setResponse(null); setShowDiscovery(true);
+    try {
+      const next = await runDiscovery(mode, text, abort.signal);
+      if (id !== requestId.current) return;
+      setResponse(next); setState(next.results.length ? "success" : "empty");
+    } catch (cause) {
+      if (abort.signal.aborted || id !== requestId.current) return;
+      setState("error"); setRequestError(cause instanceof Error ? cause.message : "Search could not be completed.");
     }
-  } catch (cause) { if (abort.signal.aborted || id !== requestId.current) return; setState("error"); setRequestError(cause instanceof Error ? cause.message : "Search could not be completed."); } };
-  const changeMode = (next: DiscoveryMode) => { controller.current?.abort(); requestId.current++; setMode(next); setResponse(null); setSelected(undefined); setShowDiscovery(false); setState("idle"); setRequestError(""); };
-  const download = () => { if (!exportable(response)) { setState("error"); setRequestError("The current response does not contain a valid GeoJSON export."); return; } const href = URL.createObjectURL(new Blob([JSON.stringify(response!.export, null, 2)], { type: "application/geo+json" })); const link = document.createElement("a"); link.href = href; link.download = isDemo ? "geosathi-demo-discovery.geojson" : "geosathi-discovery.geojson"; link.click(); URL.revokeObjectURL(href); };
-  return <main className="world-atlas premium-v2"><div className="map-workspace"><AtlasMap features={view === "global" ? [] : [...results, ...vectors(results)]} visible={{ search: true, hazard: false, infrastructure: true }} selected={selected} journey={journey} userLocation={userLocation} onJourneyStage={setStage} onJourneyComplete={completeJourney} onSelect={(f) => { const found = results.find((r) => r.id === f.id); if (found) { setSelected(found); setShowDiscovery(true); } }}/></div><AtlasNav />
-    <header className="world-header"><form onSubmit={(e) => { e.preventDefault(); void submitQuery(); }}><Search size={18}/><input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Natural language GeoAI query"/><button disabled={state === "loading"}>{state === "loading" ? "SEARCHING…" : "DISCOVER"}</button></form><div className="demo-status"><i/> {isDemo ? "DEMO MODE · SYNTHETIC EVIDENCE" : "API MODE · BACKEND RESPONSE"}<button type="button" onClick={() => changeMode("demo")} disabled={isDemo}>DEMO</button><button type="button" onClick={() => changeMode("api")} disabled={!config.apiBaseUrl || !isDemo}>API</button></div></header>
-    <div className="world-meta"><span>{stage}</span><b>{locationLabel}</b><small>{locationDetail}</small>{view === "journey" && <div className="journey-feedback"><i/><span>{streetStatus}</span></div>}</div>{view !== "global" && <div className="journey-breadcrumb" aria-label="Journey progress">{stages.map((s) => <span className={stages.indexOf(s) <= stages.indexOf(stage) ? "done" : ""} key={s}>{s.replace(" OVERVIEW", "")}</span>)}</div>}
-    {view === "global" && <section className="global-intro"><div className="intro-kicker"><Map size={15}/> Global discovery workspace</div><h1>Start with a place.<br/>Then ask a spatial question.</h1><p className="intro-note">{isDemo ? "The deterministic demo supports the solar-roof and drainage example only. Switch to a configured API for other queries." : "API mode sends your exact query to the configured backend; results are shown only when it responds."}</p><div className="global-actions"><button className="yellow-action" onClick={locateMe}><Crosshair size={17}/> {locationState === "requesting" ? "REQUESTING LOCATION…" : "LOCATE ME"}</button><button className="dark-action" onClick={() => startJourney(demoCoordinates, true)}><Navigation size={17}/> PREVIEW DEMO JOURNEY</button></div>{error && <p className="location-error">{error}</p>}<div className="continent-picker"><span>EXPLORE CONTEXT</span><button onClick={() => startJourney(demoCoordinates, true)}>Asia</button><button onClick={() => startJourney(demoCoordinates, true)}>India</button><button onClick={() => startJourney(demoCoordinates, true)}>Karnataka</button></div><div className="query-gallery"><span>EXAMPLE QUERIES</span>{examples.map((x) => <button key={x} onClick={() => { setQuery(x); void submitQuery(x); }}>{x}</button>)}</div></section>}
-    {view === "journey" && <button className="skip-button" onClick={completeJourney}>SKIP ANIMATION</button>}
-    {(showDiscovery || view === "street" || view === "local") && <aside className="discovery-dock"><div className="dock-head"><div><p>QUERY INTERPRETATION · {isDemo ? "DEMO" : "BACKEND"}</p><h2>{submitted}</h2></div><button onClick={() => setShowDiscovery(false)} aria-label="Close discovery panel"><X size={16}/></button></div>{state === "loading" && <p className="location-error">Submitting the exact query to {isDemo ? "the deterministic demo" : "the configured backend"}…</p>}{state === "error" && <div className="location-error"><p>{requestError}</p><button onClick={() => void submitQuery(submitted)}>RETRY</button>{!isDemo && <button onClick={() => changeMode("demo")}>SWITCH TO DEMO</button>}</div>}{state === "empty" && <p className="location-error">The backend completed this query but returned no matches. No synthetic results were substituted.</p>}{state === "success" && response && <><div className="intent-row"><span>VISUAL</span><b>{response.intent.visualTargets.join(" · ") || "Not supplied"}</b><span>VECTOR</span><b>{response.intent.osmFeatureTypes.join(" · ") || "Not supplied"}</b><span>SPATIAL</span><b>{response.intent.distanceMetres ? `${response.intent.distanceMetres} m` : "No distance supplied"} · {response.intent.spatialPredicates.join(" · ")}</b></div><div className="candidate-row">{results.map((r) => <button key={r.id} className={selected?.id === r.id ? "selected" : ""} onClick={() => setSelected(r)}><Eye size={15}/><span><b>{r.title}</b><small>{r.imageTileId}{r.relationships[0]?.distanceMetres ? ` · ${r.relationships[0].distanceMetres} m relation` : " · relationship supplied by response"}</small></span><em>{r.score?.toFixed(2) ?? "—"}<small>{isDemo ? "demo" : "source"}</small></em></button>)}<button className="export-button" onClick={download}><Download size={14}/> GEOJSON</button></div></>}</aside>}
-    {view === "street" && <section className="street-view" aria-label="Demo panorama viewer"><div className="street-panorama"><div className="panorama-horizon"/><div className="panorama-grid"/><span className="panorama-label">DEMO PANORAMA — NOT VERIFIED AT THIS LOCATION</span><span className="compass-cue">N · 018°</span></div><div className="street-info"><p>STREET-LEVEL FALLBACK</p><h2>{locationLabel}</h2><span>{locationDetail}</span><small>{streetStatus}. Generated local demo panorama; no Mapillary token or verified coverage is configured.</small><div><button className="yellow-action" onClick={() => { setView("local"); setJourney({ id: journeyId + 1, target: demoCoordinates, demo: true }); }}>RETURN TO MAP</button><button className="dark-action" onClick={() => { setJourney(undefined); setView("global"); setStage("WORLD OVERVIEW"); }}>RETURN TO GLOBE</button></div></div></section>}
-    {selected && <aside className="evidence-card"><button onClick={() => setSelected(undefined)} aria-label="Close evidence"><X size={15}/></button><p>OBJECT GROUNDING · {isDemo ? "DEMO" : "BACKEND"}</p><h2>{selected.title}</h2><div className="grounding-box"><i/><span>{selected.imageTileId}</span></div><dl><dt>OBJECT</dt><dd>{selected.groundedObjects[0]?.label || "No grounded object supplied"}</dd><dt>OSM</dt><dd>{selected.osmFeatures[0] ? `${selected.osmFeatures[0].type} · ${selected.osmFeatures[0].osmId}` : "No vector reference supplied"}</dd><dt>RELATION</dt><dd>{selected.relationships[0]?.explanation || "No spatial relationship supplied"}</dd></dl></aside>}
-    <footer className="osm-footer"><Database size={13}/> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a> · street imagery attribution is separate; demo panorama is locally generated</footer></main>;
+  };
+
+  const download = () => {
+    if (!exportable(response)) { setState("error"); setRequestError("The current response does not contain a valid GeoJSON export."); return; }
+    const href = URL.createObjectURL(new Blob([JSON.stringify(response!.export, null, 2)], { type: "application/geo+json" })); const link = document.createElement("a"); link.href = href; link.download = isDemo ? "geosathi-demo-discovery.geojson" : "geosathi-discovery.geojson"; link.click(); URL.revokeObjectURL(href);
+  };
+
+  return <main className="world-atlas premium-v2"><div className="map-workspace"><AtlasMap features={[...results, ...vectors(results)]} visible={{ search: true, hazard: false, infrastructure: true }} selected={selected} cameraTarget={cameraTarget} initialView={{ center: location?.coordinates ?? puneCoordinates, zoom: location ? 13 : 12.2 }} onSelect={(feature) => { const found = results.find((result) => result.id === feature.id); if (found) selectResult(found); }}/></div><AtlasNav/>
+    <header className="world-header"><form onSubmit={(event) => { event.preventDefault(); void submitQuery(); }}><Search size={18}/><input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Natural language GeoAI query"/><button disabled={state === "loading"}>{state === "loading" ? "SEARCHING…" : "DISCOVER"}</button></form><div className="demo-status"><i/> {isDemo ? "DEMO MODE · SYNTHETIC EVIDENCE" : "API MODE · BACKEND ONLY"}</div></header>
+    <div className="world-meta"><span>LOCAL AREA</span><b>{locationLabel}</b><small>{locationDetail}</small></div>{mapContext && <div className="map-focus-note" role="status">{mapContext}</div>}
+    <section className="global-intro"><div className="intro-kicker"><Map size={15}/> GeoAI discovery workspace</div><h1>Start with a place.<br/>Then ask a spatial question.</h1><p className="intro-note">{isDemo ? "The deterministic demo supports the solar-roof and drainage example only. Results are synthetic and remain labelled as demo evidence." : "Queries are sent to the configured backend; results appear only when it responds."}</p><div className="global-actions"><button className="yellow-action" onClick={locateMe} disabled={locationState === "requesting"}><Crosshair size={17}/> {locationState === "requesting" ? "REQUESTING LOCATION…" : "LOCATE ME"}</button><button className="dark-action" onClick={resetToPune}>BACK TO PUNE</button></div>{error && <p className="location-error" role="status">{error}</p>}<div className="query-gallery"><span>EXAMPLE QUERIES</span>{examples.map((example) => <button key={example} onClick={() => { setQuery(example); void submitQuery(example); }}>{example}</button>)}</div></section>
+    {showDiscovery && <aside className="discovery-dock"><div className="dock-head"><div><p>QUERY INTERPRETATION · {isDemo ? "DEMO · SYNTHETIC" : "BACKEND"}</p><h2>{submitted}</h2></div><button onClick={() => setShowDiscovery(false)} aria-label="Close discovery panel"><X size={16}/></button></div>{state === "loading" && <p className="location-error">Submitting the exact query to {isDemo ? "the deterministic demo" : "the configured backend"}…</p>}{state === "error" && <div className="location-error"><p>{requestError}</p><button onClick={() => void submitQuery(submitted)}>RETRY</button></div>}{state === "empty" && <p className="location-error">The backend completed this query but returned no matches. No synthetic results were substituted.</p>}{state === "success" && response && <><div className="intent-row"><span>VISUAL</span><b>{response.intent.visualTargets.join(" · ") || "Not supplied"}</b><span>VECTOR</span><b>{response.intent.osmFeatureTypes.join(" · ") || "Not supplied"}</b><span>SPATIAL</span><b>{response.intent.distanceMetres ? `${response.intent.distanceMetres} m` : "No distance supplied"} · {response.intent.spatialPredicates.join(" · ")}</b></div><div className="candidate-row">{results.map((result) => <button key={result.id} className={selected?.id === result.id ? "selected" : ""} onClick={() => selectResult(result)}><Eye size={15}/><span><b>{result.title}</b><small>{result.imageTileId}{result.relationships[0]?.distanceMetres ? ` · ${result.relationships[0].distanceMetres} m relation` : " · relationship supplied by response"}</small></span><em>{result.score?.toFixed(2) ?? "—"}<small>{isDemo ? "demo · synthetic" : "backend"}</small></em></button>)}<button className="export-button" onClick={download}><Download size={14}/> GEOJSON{isDemo ? " · DEMO" : ""}</button></div></>}</aside>}
+    {selected && <aside className="evidence-card"><button onClick={() => setSelected(undefined)} aria-label="Close evidence"><X size={15}/></button><p>OBJECT GROUNDING · {isDemo ? "DEMO · SYNTHETIC" : "BACKEND"}</p><h2>{selected.title}</h2><div className="grounding-box"><i/><span>{selected.imageTileId}</span></div><dl><dt>OBJECT</dt><dd>{selected.groundedObjects[0]?.label || "No grounded object supplied"}</dd><dt>OSM</dt><dd>{selected.osmFeatures[0] ? `${selected.osmFeatures[0].type} · ${selected.osmFeatures[0].osmId}` : "No vector reference supplied"}</dd><dt>RELATION</dt><dd>{selected.relationships[0]?.explanation || "No spatial relationship supplied"}</dd></dl></aside>}
+    <footer className="osm-footer"><Database size={13}/> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a> · street imagery attribution is separate; demo imagery is synthetic</footer></main>;
 }
