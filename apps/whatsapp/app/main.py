@@ -72,14 +72,48 @@ async def finish_report(session, chat, report_id, image, loc):
 
 async def finish_search(session,chat,search_id,query,loc):
     try:
-        # Real spatial results come only from connected retrieval + GIS backend.
         if settings.infra_search_url:
-            result=await call_worker(settings.infra_search_url,{'query_id':search_id,'query':query,'location':loc})
-            store.save_search(search_id,chat,query,loc,'completed',result)
-            await send_text(session,chat,f'🛰️ Search {search_id} completed. Open your dashboard to review the real results.')
+            result=await call_worker(
+                settings.infra_search_url,
+                {'query_id':search_id,'query':query,'location':loc},
+            )
+            candidates=(result or {}).get('results') or []
+            status=(result or {}).get('status','completed')
+            store.save_search(search_id,chat,query,loc,status,result or {})
+
+            if candidates:
+                top=candidates[0]
+                center=top.get('center') or {}
+                lat=float(center.get('lat',loc['lat']))
+                lon=float(center.get('lon',loc['lon']))
+                score=top.get('similarity')
+                score_text=f'{float(score):.3f}' if isinstance(score,(int,float)) else 'n/a'
+                map_url=f'https://www.openstreetmap.org/?mlat={lat:.6f}&mlon={lon:.6f}#map=17/{lat:.6f}/{lon:.6f}'
+                await send_text(
+                    session,
+                    chat,
+                    f'🛰️ Search {search_id} found {len(candidates)} imagery candidate(s).\n'
+                    f'Top candidate: {lat:.5f}, {lon:.5f}\n'
+                    f'SkyCLIP similarity: {score_text}\n'
+                    f'Status: GIS verification pending.\n'
+                    f'Map: {map_url}',
+                )
+            else:
+                await send_text(
+                    session,
+                    chat,
+                    f'🛰️ Search {search_id} completed, but no indexed imagery candidate '
+                    f'was found near the shared pin.\n'
+                    f'No geographic match has been asserted.',
+                )
         else:
             store.save_search(search_id,chat,query,loc,'pending_index',{})
-            await send_text(session,chat,f'🛰️ Search {search_id} saved. Satellite image indexing/search is not connected yet. No geographic matches have been asserted.')
+            await send_text(
+                session,
+                chat,
+                f'🛰️ Search {search_id} saved. Satellite image indexing/search is not '
+                f'connected yet. No geographic matches have been asserted.',
+            )
     except Exception:
         log.exception('Search failed %s',search_id)
         store.save_search(search_id,chat,query,loc,'failed',{})
