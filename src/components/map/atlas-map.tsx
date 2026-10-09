@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import maplibregl, { type Map as MapLibreMap } from "maplibre-gl";
 import { config } from "@/lib/config";
 import type { AtlasFeature } from "@/types/geo";
@@ -8,10 +8,13 @@ import type { AtlasFeature } from "@/types/geo";
 type LayerVisibility = Record<AtlasFeature["kind"], boolean>;
 export type JourneyStage = "WORLD OVERVIEW" | "CONTINENT" | "COUNTRY" | "REGION" | "LOCAL AREA" | "STREET LEVEL";
 export interface CameraJourney { id: number; target: [number, number]; demo: boolean; }
-interface Props { features: AtlasFeature[]; visible: LayerVisibility; selected?: AtlasFeature; onSelect: (feature: AtlasFeature) => void; journey?: CameraJourney; onJourneyStage?: (stage: JourneyStage) => void; onJourneyComplete?: () => void; initialView?: { center: [number, number]; zoom: number }; opacity?: Partial<Record<AtlasFeature["kind"], number>>; }
+interface Props { features: AtlasFeature[]; visible: LayerVisibility; selected?: AtlasFeature; onSelect: (feature: AtlasFeature) => void; journey?: CameraJourney; onJourneyStage?: (stage: JourneyStage) => void; onJourneyComplete?: () => void; initialView?: { center: [number, number]; zoom: number }; opacity?: Partial<Record<AtlasFeature["kind"], number>>; userLocation?: { id: number; coordinates: [number, number] }; }
 const groups: AtlasFeature["kind"][] = ["search", "hazard", "infrastructure"];
 const sourceId = (kind: AtlasFeature["kind"]) => `atlas-${kind}`;
 const layerId = (kind: AtlasFeature["kind"]) => `${sourceId(kind)}-visual`;
+const satelliteSourceId = "atlas-satellite";
+const satelliteLayerId = "atlas-satellite-raster";
+const satelliteTileTemplate = (key: string) => `https://api.maptiler.com/tiles/satellite-v2/{z}/{x}/{y}.jpg?key=${key}`;
 
 function featureCollection(features: AtlasFeature[], kind: AtlasFeature["kind"], isVisible: boolean): GeoJSON.FeatureCollection {
   return { type: "FeatureCollection", features: isVisible ? features.filter((feature) => feature.kind === kind).map((feature) => ({ type: "Feature", properties: { id: feature.id, title: feature.title, synthetic: "Synthetic demo feature" }, geometry: feature.geometry })) : [] };
@@ -20,17 +23,28 @@ function boundsFor(feature: AtlasFeature) {
   const coordinates = feature.geometry.type === "Point" ? [feature.geometry.coordinates] : feature.geometry.type === "LineString" ? feature.geometry.coordinates : feature.geometry.coordinates[0];
   return coordinates.reduce((bounds, coordinate) => bounds.extend(coordinate as [number, number]), new maplibregl.LngLatBounds(coordinates[0] as [number, number], coordinates[0] as [number, number]));
 }
+function isSatelliteResourceError(event: unknown, tileOrigin: string) {
+  const candidate = event as { sourceId?: unknown; source?: { id?: unknown }; tile?: { source?: unknown }; error?: { message?: unknown } };
+  if (candidate.sourceId === satelliteSourceId || candidate.source?.id === satelliteSourceId || candidate.tile?.source === satelliteSourceId) return true;
+  const message = candidate.error?.message;
+  return typeof message === "string" && (message.includes(satelliteSourceId) || message.includes(tileOrigin));
+}
 
-export function AtlasMap({ features, visible, selected, onSelect, journey, onJourneyStage, onJourneyComplete, initialView, opacity }: Props) {
+export function AtlasMap({ features, visible, selected, onSelect, journey, onJourneyStage, onJourneyComplete, initialView, opacity, userLocation }: Props) {
   const container = useRef<HTMLDivElement>(null); const map = useRef<MapLibreMap | null>(null); const journeyTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const initialViewRef = useRef(initialView);
   const featureLookup = useRef<AtlasFeature[]>(features); const onSelectRef = useRef(onSelect);
+  const [basemap, setBasemap] = useState<"street" | "satellite">("street"); const [satelliteError, setSatelliteError] = useState("");
+  const basemapRef = useRef(basemap); const satelliteErrorReported = useRef(false);
   useEffect(() => { featureLookup.current = features; onSelectRef.current = onSelect; }, [features, onSelect]);
+  useEffect(() => { basemapRef.current = basemap; }, [basemap]);
   useEffect(() => {
     if (!container.current || map.current) return;
     const initial = initialViewRef.current;
     const instance = new maplibregl.Map({ container: container.current, center: initial?.center ?? [0, 20], zoom: initial?.zoom ?? 1.35, style: { version: 8, sources: { osm: { type: "raster", tiles: [config.osmTileUrl], tileSize: 256, attribution: "© <a href='https://www.openstreetmap.org/copyright' target='_blank' rel='noreferrer'>OpenStreetMap contributors</a>" } }, layers: [{ id: "osm", type: "raster", source: "osm" }] } });
     instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+    const satelliteOrigin = config.mapTilerApiKey ? new URL(satelliteTileTemplate(config.mapTilerApiKey)).origin : "";
+    instance.on("error", (event) => { if (basemapRef.current === "satellite" && satelliteOrigin && !satelliteErrorReported.current && isSatelliteResourceError(event, satelliteOrigin)) { satelliteErrorReported.current = true; setSatelliteError("Satellite imagery could not be loaded. Return to Street or check the MapTiler key and its domain restrictions."); } });
     instance.on("load", () => {
       groups.forEach((kind) => {
         instance.addSource(sourceId(kind), { type: "geojson", data: featureCollection([], kind, false) });
@@ -49,6 +63,14 @@ export function AtlasMap({ features, visible, selected, onSelect, journey, onJou
     resizeObserver.observe(container.current);
     map.current = instance; return () => { resizeObserver.disconnect(); journeyTimers.current.forEach(clearTimeout); instance.remove(); map.current = null; };
   }, []);
+  useEffect(() => {
+    const instance = map.current; if (!instance || !instance.isStyleLoaded()) return;
+    if (!config.mapTilerApiKey) return;
+    if (!instance.getSource(satelliteSourceId)) instance.addSource(satelliteSourceId, { type: "raster", tiles: [satelliteTileTemplate(config.mapTilerApiKey)], tileSize: 256, maxzoom: 22, attribution: "© <a href='https://www.maptiler.com/copyright/' target='_blank' rel='noreferrer'>MapTiler</a> © contributors" });
+    if (!instance.getLayer(satelliteLayerId)) instance.addLayer({ id: satelliteLayerId, type: "raster", source: satelliteSourceId, layout: { visibility: "none" } }, layerId("search"));
+    instance.setLayoutProperty("osm", "visibility", basemap === "street" ? "visible" : "none");
+    instance.setLayoutProperty(satelliteLayerId, "visibility", basemap === "satellite" ? "visible" : "none");
+  }, [basemap]);
   useEffect(() => { const instance = map.current; if (!instance) return; const sync = () => groups.forEach((kind) => (instance.getSource(sourceId(kind)) as maplibregl.GeoJSONSource | undefined)?.setData(featureCollection(features, kind, visible[kind]))); if (instance.isStyleLoaded()) sync(); else instance.once("load", sync); }, [features, visible]);
   useEffect(() => { const instance = map.current; if (!instance || !instance.isStyleLoaded()) return; if (instance.getLayer(layerId("search"))) instance.setPaintProperty(layerId("search"), "fill-opacity", opacity?.search ?? 0.13); if (instance.getLayer(layerId("infrastructure"))) instance.setPaintProperty(layerId("infrastructure"), "line-opacity", opacity?.infrastructure ?? 0.9); if (instance.getLayer(layerId("hazard"))) instance.setPaintProperty(layerId("hazard"), "circle-opacity", opacity?.hazard ?? 1); }, [opacity]);
   useEffect(() => { const instance = map.current; if (!instance) return; const sync = () => { const isLayerVisible = selected ? visible[selected.kind] : false; const data: GeoJSON.FeatureCollection = selected && isLayerVisible ? { type: "FeatureCollection", features: [{ type: "Feature", properties: { id: selected.id }, geometry: selected.geometry }] } : featureCollection([], "search", false); (instance.getSource("atlas-selected") as maplibregl.GeoJSONSource | undefined)?.setData(data); if (selected && isLayerVisible) instance.fitBounds(boundsFor(selected), { padding: 140, maxZoom: 16, duration: 650 }); }; if (instance.isStyleLoaded()) sync(); else instance.once("load", sync); }, [selected, visible]);
@@ -64,8 +86,11 @@ export function AtlasMap({ features, visible, selected, onSelect, journey, onJou
       { stage: "LOCAL AREA", center: journey.target, zoom: 12.1, pitch: 48, duration: 1200 },
       { stage: "STREET LEVEL", center: journey.target, zoom: 15.5, pitch: 58, duration: 1100 },
     ];
-    let offset = 0; stages.forEach((step, index) => { const timer = setTimeout(() => { onJourneyStage?.(step.stage); instance.easeTo({ center: step.center, zoom: step.zoom, pitch: step.pitch, duration: step.duration, essential: true, easing: (t) => t * (2 - t) }); if (index === stages.length - 1) { const complete = setTimeout(() => onJourneyComplete?.(), step.duration + 80); journeyTimers.current.push(complete); } }, offset); journeyTimers.current.push(timer); offset += step.duration + 140; });
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) { stages.forEach((step) => { onJourneyStage?.(step.stage); instance.jumpTo({ center: step.center, zoom: step.zoom, pitch: step.pitch }); }); onJourneyComplete?.(); return; }
+    let offset = 0; stages.forEach((step, index) => { const timer = setTimeout(() => { onJourneyStage?.(step.stage); instance.easeTo({ center: step.center, zoom: step.zoom, pitch: step.pitch, duration: step.duration, essential: false, easing: (t) => t * (2 - t) }); if (index === stages.length - 1) { const complete = setTimeout(() => onJourneyComplete?.(), step.duration + 80); journeyTimers.current.push(complete); } }, offset); journeyTimers.current.push(timer); offset += step.duration + 140; });
     return () => { journeyTimers.current.forEach(clearTimeout); journeyTimers.current = []; instance.stop(); };
   }, [journey, onJourneyComplete, onJourneyStage]);
-  return <div ref={container} className="map" aria-label="Interactive OpenStreetMap workspace" />;
+  useEffect(() => { const instance = map.current; if (!instance || !userLocation) return; journeyTimers.current.forEach(clearTimeout); journeyTimers.current = []; instance.stop(); instance.easeTo({ center: userLocation.coordinates, zoom: Math.max(instance.getZoom(), 13), pitch: 35, duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 900, essential: false }); }, [userLocation]);
+  return <div className="map-shell"><div ref={container} className="map" aria-label="Interactive map workspace"/><div className="map-style-switch" aria-label="Basemap style"><button className={basemap === "street" ? "active" : ""} onClick={() => setBasemap("street")}>Street</button><button className={basemap === "satellite" ? "active" : ""} onClick={() => { satelliteErrorReported.current = false; setSatelliteError(""); setBasemap("satellite"); }} disabled={!config.mapTilerApiKey} title={config.mapTilerApiKey ? "Use MapTiler satellite imagery" : "Set NEXT_PUBLIC_MAPTILER_API_KEY to enable satellite imagery"}>Satellite</button>{!config.mapTilerApiKey && <small>Satellite needs MapTiler key</small>}{satelliteError && <small role="status">{satelliteError}</small>}</div></div>;
 }
