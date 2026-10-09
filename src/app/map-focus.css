@@ -1,0 +1,22 @@
+.map-focus-note {
+  position: absolute;
+  z-index: 5;
+  top: 145px;
+  right: 42px;
+  max-width: min(360px, 40vw);
+  padding: 8px 11px;
+  border: 1px solid #ffffff2b;
+  border-radius: 10px;
+  background: #242424e8;
+  color: #f5d85b;
+  font: 10px/1.35 "IBM Plex Mono", monospace;
+  box-shadow: 0 5px 15px #0004;
+}
+
+@media (max-width: 800px) {
+  .map-focus-note {
+    top: 135px;
+    right: 18px;
+    max-width: calc(100vw - 110px);
+  }
+}
