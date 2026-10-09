@@ -19,8 +19,41 @@ export default function Home() {
   const sequence = useRef(0), requestId = useRef(0), locationRequestId = useRef(0), controller = useRef<AbortController | undefined>(undefined); const [userLocation, setUserLocation] = useState<{ id: number; coordinates: [number, number] }>(); const results = response?.results ?? [], isDemo = mode === "demo";
   const startJourney = (target: [number, number], demo: boolean, detail?: string) => { locationRequestId.current++; sequence.current++; setJourneyId(sequence.current); setError(""); setSelected(undefined); setShowDiscovery(false); setView("journey"); setStage("WORLD OVERVIEW"); setStreetStatus("Checking configured street-imagery coverage…"); setLocationLabel(demo ? "DEMO LOCATION · Bengaluru" : "Captured coordinates"); setLocationDetail(detail || (demo ? "Demo hierarchy: Asia · India · Karnataka · Bengaluru" : `${target[1].toFixed(5)}° N · ${target[0].toFixed(5)}° E · locality unavailable`)); setJourney({ id: sequence.current, target, demo }); };
   const locateMe = () => { const locationId = ++locationRequestId.current; if (!navigator.geolocation) { setLocationState("unavailable"); setError("Geolocation is unavailable in this browser. Use Preview demo journey instead."); return; } setError(""); setLocationState("requesting"); navigator.geolocation.getCurrentPosition((p) => { if (locationId !== locationRequestId.current) return; const target: [number, number] = [p.coords.longitude, p.coords.latitude]; setJourney(undefined); setUserLocation({ id: locationId, coordinates: target }); setLocationState("captured"); setLocationLabel("YOUR CURRENT LOCATION"); setLocationDetail(`${target[1].toFixed(5)}° N · ${target[0].toFixed(5)}° E · ±${Math.round(p.coords.accuracy)} m · ${new Date(p.timestamp).toLocaleTimeString()} · locality unavailable`); }, (reason) => { if (locationId !== locationRequestId.current) return; setLocationState("unavailable"); const message = reason.code === 1 ? "Location permission was denied. You can still use Preview demo journey." : reason.code === 3 ? "Location request timed out. Check your device signal and retry, or use Preview demo journey." : "Location is unavailable on this device. You can still use Preview demo journey."; setError(message); }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }); };
-  const completeJourney = useCallback(() => { setJourney(undefined); setStreetStatus("Coverage unavailable — showing local demo panorama"); setView("street"); setStage("STREET LEVEL"); }, []);
-  const submitQuery = async (value = query) => { const text = value.trim(); if (!text || state === "loading") return; controller.current?.abort(); const id = ++requestId.current, abort = new AbortController(); controller.current = abort; setSubmitted(text); setState("loading"); setRequestError(""); setSelected(undefined); setResponse(null); setShowDiscovery(true); try { const next = await runDiscovery(mode, text, abort.signal); if (id !== requestId.current) return; setResponse(next); setState(next.results.length ? "success" : "empty"); if (isDemo) startJourney(demoCoordinates, true); } catch (cause) { if (abort.signal.aborted || id !== requestId.current) return; setState("error"); setRequestError(cause instanceof Error ? cause.message : "Search could not be completed."); } };
+  const completeJourney = useCallback(() => {
+    setJourney(undefined);
+
+    if (mode === "api") {
+      setStreetStatus(
+        "SkyCLIP imagery candidate · GIS verification pending"
+      );
+      setView("local");
+      setStage("LOCAL AREA");
+      setShowDiscovery(true);
+      return;
+    }
+
+    setStreetStatus("Coverage unavailable — showing local demo panorama");
+    setView("street");
+    setStage("STREET LEVEL");
+  }, [mode]);
+  const submitQuery = async (value = query) => { const text = value.trim(); if (!text || state === "loading") return; controller.current?.abort(); const id = ++requestId.current, abort = new AbortController(); controller.current = abort; setSubmitted(text); setState("loading"); setRequestError(""); setSelected(undefined); setResponse(null); setShowDiscovery(true); try { const next = await runDiscovery(mode, text, abort.signal); if (id !== requestId.current) return; setResponse(next); setState(next.results.length ? "success" : "empty");
+    if (isDemo) {
+      startJourney(demoCoordinates, true);
+    } else if (next.results[0]?.bounds) {
+      const [minLon, minLat, maxLon, maxLat] = next.results[0].bounds;
+
+      const target: [number, number] = [
+        (minLon + maxLon) / 2,
+        (minLat + maxLat) / 2,
+      ];
+
+      startJourney(
+        target,
+        false,
+        `${target[1].toFixed(5)}° N · ${target[0].toFixed(5)}° E · ${next.results[0].imageTileId}`,
+      );
+    }
+  } catch (cause) { if (abort.signal.aborted || id !== requestId.current) return; setState("error"); setRequestError(cause instanceof Error ? cause.message : "Search could not be completed."); } };
   const changeMode = (next: DiscoveryMode) => { controller.current?.abort(); requestId.current++; setMode(next); setResponse(null); setSelected(undefined); setShowDiscovery(false); setState("idle"); setRequestError(""); };
   const download = () => { if (!exportable(response)) { setState("error"); setRequestError("The current response does not contain a valid GeoJSON export."); return; } const href = URL.createObjectURL(new Blob([JSON.stringify(response!.export, null, 2)], { type: "application/geo+json" })); const link = document.createElement("a"); link.href = href; link.download = isDemo ? "geosathi-demo-discovery.geojson" : "geosathi-discovery.geojson"; link.click(); URL.revokeObjectURL(href); };
   return <main className="world-atlas premium-v2"><div className="map-workspace"><AtlasMap features={view === "global" ? [] : [...results, ...vectors(results)]} visible={{ search: true, hazard: false, infrastructure: true }} selected={selected} journey={journey} userLocation={userLocation} onJourneyStage={setStage} onJourneyComplete={completeJourney} onSelect={(f) => { const found = results.find((r) => r.id === f.id); if (found) { setSelected(found); setShowDiscovery(true); } }}/></div><AtlasNav />
