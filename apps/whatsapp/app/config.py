@@ -7,8 +7,11 @@ class Settings(BaseSettings):
     waha_hmac_secret: str = ''
     db_path: str = '/data/bot.sqlite3'
     media_dir: str = '/data/media'
-    # Optional: secure service-to-service endpoints for upgrades
     road_inference_url: str = ''
+    road_service_token: str = ''
+    road_conf: float = 0.25
+    road_iou: float = 0.45
+    road_timeout_seconds: float = 120.0
     infra_search_url: str = ''
     service_token: str = ''
     # Keep WAHA session name from incoming webhook; no default assumption.

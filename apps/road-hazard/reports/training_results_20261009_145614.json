@@ -1,0 +1,19 @@
+{
+  "model": "yolo11n.pt",
+  "epochs": 50,
+  "batch_size": 16,
+  "image_size": 640,
+  "dataset": "C:/PROJECTS/Fusion/dataset",
+  "classes": {
+    "0": "pothole"
+  },
+  "best_model": "models\\best.pt",
+  "results_dir": "C:\\PROJECTS\\Fusion\\runs\\detect\\runs\\train\\pothole_detection_20261009_144710",
+  "metrics": {
+    "metrics/precision(B)": 0.8488861920127343,
+    "metrics/recall(B)": 0.8093385214007782,
+    "metrics/mAP50(B)": 0.8735773122513478,
+    "metrics/mAP50-95(B)": 0.5321755682416264,
+    "fitness": 0.5321755682416264
+  }
+}

@@ -1,0 +1,68 @@
+# =============================================================================
+# GeoSathi AI — .gitignore
+# =============================================================================
+
+# 1. Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# 2. Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# 3. Secrets & Credentials
+.env
+.env.*
+*.pem
+*.key
+*.cert
+*.pfx
+secrets.toml
+
+# 4. Datasets & Raw Archives (Do NOT push large datasets to GitHub)
+*.zip
+*.tar
+*.tar.gz
+dataset/
+dataset_raw/
+dataset2_raw/
+dataset_merged/
+*.cache
+labels.cache
+
+# 5. Training runs, checkpoints & temporary outputs
+runs/
+outputs/
+plots/
+wandb/
+*.log
+.system_generated/
+
+# 6. Heavy PyTorch Weights (*.pt files exceed GitHub limits)
+*.pt
+weights/
+models/*.pt
+
+# 7. Model Checkpoints & ONNX
+# models/pothole_detector.onnx is ~10.1MB (well within GitHub 100MB limit).
+models/*.onnx
+!models/pothole_detector.onnx
+
+# 8. OS & IDE artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -18,6 +18,7 @@ def init():
         db.execute('CREATE TABLE IF NOT EXISTS seen (message_id TEXT PRIMARY KEY)')
         db.execute('CREATE TABLE IF NOT EXISTS reports (report_id TEXT PRIMARY KEY, chat_id TEXT, lat REAL, lon REAL, media_path TEXT, status TEXT, result_json TEXT)')
         db.execute('CREATE TABLE IF NOT EXISTS searches (search_id TEXT PRIMARY KEY, chat_id TEXT, query TEXT, area_json TEXT, status TEXT, result_json TEXT)')
+        db.execute('CREATE TABLE IF NOT EXISTS preferences (chat_id TEXT PRIMARY KEY, language TEXT NOT NULL)')
 
 
 def get_chat(chat_id):
@@ -29,6 +30,20 @@ def get_chat(chat_id):
 def set_chat(chat_id,state,draft=None):
     with conn() as db:
         db.execute('INSERT INTO chats VALUES (?,?,?) ON CONFLICT(chat_id) DO UPDATE SET state=excluded.state,draft=excluded.draft', (chat_id,state,json.dumps(draft or {})))
+
+
+def get_language(chat_id, default=None):
+    with conn() as db:
+        row = db.execute('SELECT language FROM preferences WHERE chat_id=?', (chat_id,)).fetchone()
+    return row['language'] if row else default
+
+
+def set_language(chat_id, language):
+    with conn() as db:
+        db.execute(
+            'INSERT INTO preferences(chat_id,language) VALUES (?,?) ON CONFLICT(chat_id) DO UPDATE SET language=excluded.language',
+            (chat_id, language),
+        )
 
 
 def mark_once(message_id):

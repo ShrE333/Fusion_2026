@@ -1,0 +1,45 @@
+# .gcloudignore
+.gcloudignore
+.git/
+.gitignore
+
+# Virtual Environments
+venv/
+.venv/
+env/
+
+# Datasets and Large Archives
+*.zip
+*.tar
+*.tar.gz
+dataset/
+dataset_raw/
+dataset2_raw/
+dataset_merged/
+*.cache
+
+# Checkpoints and Training Runs
+*.pt
+models/*.pt
+models/best.onnx
+models/best_old_ds1.pt
+runs/
+outputs/
+plots/
+wandb/
+*.log
+.system_generated/
+
+# Training scripts not needed for API runtime
+scripts/train*
+scripts/build*
+scripts/convert*
+scripts/evaluate*
+
+# Streamlit App
+app.py
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo

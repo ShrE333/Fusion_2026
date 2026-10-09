@@ -1,0 +1,10 @@
+# GeoSathi AI — Cloud Run Production Deployment Dependencies
+# Ultra-lightweight: No PyTorch, No CUDA, No Ultralytics (~200MB container vs ~6GB)
+
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+python-multipart>=0.0.9
+onnxruntime>=1.16.0
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
+pydantic>=2.0.0
