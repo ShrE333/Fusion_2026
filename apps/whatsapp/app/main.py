@@ -12,7 +12,8 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from . import store
 from .config import settings
 from .i18n import normalize_language, t
-from .waha import download_image, send_image, send_menu, send_text
+from .waha import download_image, send_image, send_language_menu, send_menu, send_text
+from .geo_links import inspect_url
 
 logging.basicConfig(level=logging.INFO)
 log=logging.getLogger('fusion.whatsapp')
@@ -190,6 +191,13 @@ def _annotate_road_image(image_path, detections, report_id):
     return output
 
 
+async def _safe_send_menu(session,chat,language):
+    try:
+        await send_menu(session,chat,t(language,'menu'),language)
+    except Exception:
+        log.exception('Could not deliver recurring WhatsApp menu')
+
+
 async def finish_report(session, chat, report_id, image, loc, language='en'):
     lat=float(loc['lat'])
     lon=float(loc['lon'])
@@ -202,6 +210,7 @@ async def finish_report(session, chat, report_id, image, loc, language='en'):
             chat,
             t(language,'road_not_configured',report_id=report_id,lat=lat,lon=lon),
         )
+        await _safe_send_menu(session,chat,language)
         return
 
     try:
@@ -231,7 +240,8 @@ async def finish_report(session, chat, report_id, image, loc, language='en'):
                   confidence=_confidence_text(detections),latency=_latency_text(result or {}),
                   lat=lat,lon=lon,map_url=map_url),
             )
-            await send_menu(session,chat,t(language,'menu'),language)
+            await send_text(session,chat,"📍 Mobile map + street imagery:\n"+inspect_url(lat,lon,'roads nearby'))
+            await _safe_send_menu(session,chat,language)
         else:
             status='no_detection_pending_review'
             store.save_report(report_id,chat,lat,lon,str(image),status,result or {})
@@ -239,7 +249,8 @@ async def finish_report(session, chat, report_id, image, loc, language='en'):
                 session,chat,
                 t(language,'road_no_detection',report_id=report_id,lat=lat,lon=lon,map_url=map_url),
             )
-            await send_menu(session,chat,t(language,'menu'),language)
+            await send_text(session,chat,"📍 Mobile map + street imagery:\n"+inspect_url(lat,lon,'roads nearby'))
+            await _safe_send_menu(session,chat,language)
     except Exception:
         log.exception('Road inference failed for %s',report_id)
         store.save_report(report_id,chat,lat,lon,str(image),'inference_failed',{})
@@ -255,6 +266,7 @@ async def finish_report(session, chat, report_id, image, loc, language='en'):
                 map_url=map_url,
             ),
         )
+        await _safe_send_menu(session,chat,language)
 
 
 async def finish_search(session,chat,search_id,query,loc,language='en'):
@@ -275,7 +287,7 @@ async def finish_search(session,chat,search_id,query,loc,language='en'):
                         t(language,'search_gis_found',search_id=search_id,count=len(candidates),
                           layer=str((result or {}).get('gis_layer') or top.get('gis_layer') or 'GIS'),
                           name=str(top.get('name') or 'Unnamed feature'),
-                          lat=lat,lon=lon,map_url=_map_url(lat,lon,17)),
+                          lat=lat,lon=lon,map_url=inspect_url(loc['lat'],loc['lon'],query,str(top.get('id','')))),
                     )
                 else:
                     score=top.get('similarity')
@@ -283,18 +295,24 @@ async def finish_search(session,chat,search_id,query,loc,language='en'):
                     await send_text(
                         session,chat,
                         t(language,'search_found',search_id=search_id,count=len(candidates),
-                          lat=lat,lon=lon,score=score_text,map_url=_map_url(lat,lon,17)),
+                          lat=lat,lon=lon,score=score_text,map_url=inspect_url(loc['lat'],loc['lon'],query,str(top.get('id','')))),
                     )
             else:
                 await send_text(session,chat,t(language,'search_none',search_id=search_id))
-            await send_menu(session,chat,t(language,'menu'),language)
+            feature_id=str(candidates[0].get('id','')) if candidates and isinstance(candidates[0],dict) else ''
+            interactive=inspect_url(loc['lat'],loc['lon'],query,feature_id)
+            await send_text(session,chat,"🗺️ View GIS footprints / imagery tile bounds + satellite + mobile street imagery:\n"+interactive+"\nStreet view: "+interactive+"#street")
+            await _safe_send_menu(session,chat,language)
         else:
             store.save_search(search_id,chat,query,loc,'pending_index',{})
             await send_text(session,chat,t(language,'search_saved',search_id=search_id))
+            await send_text(session,chat,inspect_url(loc['lat'],loc['lon'],query))
+            await _safe_send_menu(session,chat,language)
     except Exception:
         log.exception('Search failed %s',search_id)
         store.save_search(search_id,chat,query,loc,'failed',{})
         await send_text(session,chat,t(language,'search_failed',search_id=search_id))
+        await _safe_send_menu(session,chat,language)
 
 
 def is_private_chat(chat_id: str) -> bool:
@@ -349,33 +367,46 @@ async def process_event(data):
     media=payload.get('media') or {}
     loc=extract_location(payload)
 
+    direct_languages={
+        "language_en":"en", "language_hi":"hi", "language_mr":"mr",
+        "english":"en", "hindi":"hi", "marathi":"mr",
+        "हिन्दी":"hi", "हिंदी":"hi", "मराठी":"mr",
+    }
+    if command in direct_languages:
+        chosen=direct_languages[command]
+        store.set_language(chat,chosen)
+        store.set_chat(chat,'MENU')
+        await send_text(session,chat,t(chosen,'language_saved'))
+        await send_menu(session,chat,t(chosen,'menu'),chosen)
+        return
+
     if _is_language_command(command):
         store.set_chat(chat,'LANGUAGE')
-        await send_text(session,chat,t(language or 'en','language_prompt'))
+        await send_language_menu(session,chat,t(language or 'en','language_prompt'),language or 'en')
         return
 
     if command in {'geosathi','hi','hello','start'}:
         if language:
             store.set_chat(chat,'MENU')
-            await send_menu(session,chat,t(language,'menu'),language)
+            await _safe_send_menu(session,chat,language)
         else:
             store.set_chat(chat,'LANGUAGE')
-            await send_text(session,chat,t('en','language_prompt'))
+            await send_language_menu(session,chat,t('en','language_prompt'))
         return
 
     if _is_menu_command(command):
         if language:
             store.set_chat(chat,'MENU')
-            await send_menu(session,chat,t(language,'menu'),language)
+            await _safe_send_menu(session,chat,language)
         else:
             store.set_chat(chat,'LANGUAGE')
-            await send_text(session,chat,t('en','language_prompt'))
+            await send_language_menu(session,chat,t('en','language_prompt'))
         return
 
     if state=='LANGUAGE':
-        selected=normalize_language(command)
+        selected=normalize_language(command) or direct_languages.get(command)
         if not selected:
-            await send_text(session,chat,t(language or 'en','language_prompt'))
+            await send_language_menu(session,chat,t(language or 'en','language_prompt'),language or 'en')
             return
         store.set_language(chat,selected)
         store.set_chat(chat,'MENU')
@@ -395,7 +426,7 @@ async def process_event(data):
             store.set_chat(chat,'ROAD_IMAGE')
             reply=t(language,'road_prompt')
         else:
-            await send_menu(session,chat,t(language,'menu'),language)
+            await _safe_send_menu(session,chat,language)
             return
 
     elif state=='ROAD_IMAGE':
@@ -468,7 +499,7 @@ def extract_selection(payload):
         (msg.get('listResponseMessage') or {}).get('singleSelectReply',{}).get('selectedRowID'),
     ]
     for entry in entries:
-        if isinstance(entry,str) and entry.lower() in {'infrastructure','road','1','2'}:
+        if isinstance(entry,str) and entry.lower() in {'infrastructure','road','1','2','language_en','language_hi','language_mr'}:
             return entry.lower()
     return None
 

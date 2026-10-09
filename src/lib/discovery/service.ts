@@ -1,44 +1,34 @@
 import { searchAtlas } from "@/lib/api/client";
+import { isGeoGeometry } from "@/lib/geo-validation";
 import { demoDiscoveryResults, demoGeoJsonExport, demoIntent } from "@/lib/demo/discovery";
 import type { DiscoveryResult, GeoJsonExport, QueryIntent, SearchResponse } from "@/types/geo";
-
-export type DiscoveryMode = "demo" | "api";
-export const supportedDemoQuery = "Find commercial roofs with solar panel installations within 200 metres of open drainage";
-
-const normalise = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
-export const isSupportedDemoQuery = (query: string) => normalise(query) === normalise(supportedDemoQuery);
-
-function isGeometry(value: unknown): value is DiscoveryResult["geometry"] {
-  return Boolean(value) && typeof value === "object" && ["Point", "LineString", "Polygon"].includes((value as { type?: unknown }).type as string) && Array.isArray((value as { coordinates?: unknown }).coordinates);
+export type DiscoveryMode="demo"|"api";
+export const supportedDemoQuery="Find commercial roofs with solar panel installations within 200 metres of open drainage";
+const normalize=(value:string)=>value.trim().replace(/\s+/g," ").toLowerCase();
+function isResult(result:unknown):result is DiscoveryResult {
+  const x=result as Partial<DiscoveryResult> | null;
+  return !!x && typeof x.id==="string" && typeof x.title==="string" && typeof x.source==="string" &&
+    isGeoGeometry(x.geometry) &&
+    typeof x.imageTileId==="string" && Array.isArray(x.groundedObjects) && Array.isArray(x.osmFeatures) && Array.isArray(x.relationships);
 }
-function isIntent(value: unknown): value is QueryIntent {
-  if (!value || typeof value !== "object") return false;
-  const intent = value as Partial<QueryIntent>;
-  return Array.isArray(intent.visualTargets) && Array.isArray(intent.osmFeatureTypes) && Array.isArray(intent.spatialPredicates) && typeof intent.scope === "string";
+function isIntent(x:unknown):x is QueryIntent {
+  const i=x as Partial<QueryIntent> | null;
+  return !!i&&Array.isArray(i.visualTargets)&&Array.isArray(i.osmFeatureTypes)&&Array.isArray(i.spatialPredicates)&&typeof i.scope==="string";
 }
-function isResult(value: unknown): value is DiscoveryResult {
-  if (!value || typeof value !== "object") return false;
-  const result = value as Partial<DiscoveryResult>;
-  return typeof result.id === "string" && typeof result.title === "string" && typeof result.source === "string" && typeof result.imageTileId === "string" && isGeometry(result.geometry) && Array.isArray(result.groundedObjects) && Array.isArray(result.osmFeatures) && Array.isArray(result.relationships);
+function isExport(x:unknown):x is GeoJsonExport {
+  const e=x as Partial<GeoJsonExport> | null;
+  return !!e && e.type==="FeatureCollection" && Array.isArray(e.features) && e.features.every(f => f?.type === "Feature" && isGeoGeometry(f.geometry)) && e.metadata?.mode==="backend";
 }
-function isExport(value: unknown): value is GeoJsonExport {
-  if (!value || typeof value !== "object") return false;
-  const exportValue = value as Partial<GeoJsonExport>;
-  return exportValue.type === "FeatureCollection" && Array.isArray(exportValue.features) && Boolean(exportValue.metadata) && (exportValue.metadata as { mode?: unknown }).mode === "backend";
+export function validateSearchResponse(raw:unknown):SearchResponse {
+  const r=raw as Partial<SearchResponse> | null;
+  if(!r||typeof r.query!=="string"||!isIntent(r.intent)||!Array.isArray(r.results)||!r.results.every(isResult)||!isExport(r.export))
+    throw new Error("GeoSathi returned an invalid search response");
+  return r as SearchResponse;
 }
-
-export function validateSearchResponse(value: unknown): SearchResponse {
-  const response = value as Partial<SearchResponse> | null;
-  if (!response || typeof response.query !== "string" || !isIntent(response.intent) || !Array.isArray(response.results) || !response.results.every(isResult) || !isExport(response.export)) {
-    throw new Error("Backend response does not match the proposed GeoSathi search contract.");
+export async function runDiscovery(mode:DiscoveryMode,query:string,center?:[number,number],signal?:AbortSignal):Promise<SearchResponse> {
+  if(mode==="demo") {
+    if(normalize(query)!==normalize(supportedDemoQuery)) throw new Error("Demo only supports the fixed solar/drainage example");
+    return {query,results:demoDiscoveryResults,intent:demoIntent,export:demoGeoJsonExport(query)};
   }
-  return response as SearchResponse;
-}
-
-export async function runDiscovery(mode: DiscoveryMode, query: string, signal?: AbortSignal): Promise<SearchResponse> {
-  if (mode === "demo") {
-    if (!isSupportedDemoQuery(query)) throw new Error("This deterministic demo supports the solar-roof and drainage example only. Switch to API mode for other queries.");
-    return { query: supportedDemoQuery, intent: demoIntent, results: demoDiscoveryResults, export: demoGeoJsonExport(supportedDemoQuery) };
-  }
-  return validateSearchResponse(await searchAtlas(query, signal));
+  return validateSearchResponse(await searchAtlas(query,center,signal));
 }

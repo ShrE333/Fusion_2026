@@ -1,0 +1,39 @@
+/* Consistent small-screen layout across Discover, Layers, inspection and Street View */
+@media(max-width:820px){
+  .world-rail{width:52px!important;padding:9px 0!important}
+  .world-rail a{width:43px!important;margin-top:12px!important;padding:8px 1px!important}
+  .world-header,.premium-v2 .world-header{left:62px!important;right:8px!important;top:9px!important}
+  .world-header form,.premium-v2 .world-header form{width:100%!important;max-width:100%;padding:5px 5px 5px 9px!important}
+  .world-header form input{font-size:13px!important}
+  .world-header form button{font-size:10px;padding:9px!important}
+  .premium-v2 .map-workspace{inset:64px 8px 8px 60px!important;border-radius:12px!important}
+  .premium-v2 .global-intro{left:69px!important;right:13px!important;top:140px!important;max-width:360px!important;max-height:40dvh!important;overflow:auto!important}
+  .premium-v2 .world-meta{left:69px!important;top:73px!important;max-width:calc(100vw - 87px)!important;padding:6px 9px!important}
+  .premium-v2 .world-meta b{font-size:12px!important}
+  .premium-v2 .world-meta small{font-size:8px!important}
+  .premium-v2 .discovery-dock{left:69px!important;right:8px!important;bottom:12px!important;max-height:39dvh!important;overflow:auto!important}
+  .candidate-row{display:flex!important;overflow-x:auto!important}
+  .candidate-row>button:not(.export-button){min-width:140px!important;flex:0 0 140px!important}
+  .candidate-row>button:nth-child(2){display:flex!important}
+  .candidate-row .export-button{position:sticky;right:0;min-width:75px!important}
+  .premium-v2 .evidence-card{left:69px!important;right:8px!important;bottom:12px!important;max-height:45dvh!important;overflow:auto!important}
+  .explorer-map{inset:64px 8px 8px 60px!important}
+  .catalogue-panel{left:69px!important;top:75px!important;max-width:calc(100vw - 85px);max-height:35dvh;overflow:auto}
+  .metadata-panel{left:69px!important;right:8px!important;bottom:8px!important;max-height:34dvh;overflow:auto}
+  .street-workspace{margin:72px 8px 30px 59px!important}
+  .street-live-header{left:61px!important;right:8px!important}
+  .street-map-column{height:560px!important}.street-view-column{height:570px!important}
+  .street-view-frame{min-height:280px!important}.street-map-frame{min-height:190px!important;height:190px!important}
+  .street-location-actions button{font-size:9px!important;min-height:34px}
+  .street-live-footer{margin:0 8px 10px 59px!important}
+}
+@media(max-width:420px){
+  .premium-v2 .global-intro{top:135px!important;padding:10px!important;max-height:36dvh!important}
+  .premium-v2 .global-intro h1{font-size:19px!important}
+  .premium-v2 .intro-note{font-size:10px!important}
+  .premium-v2 .discovery-dock{max-height:36dvh!important}
+  .street-location-controls{padding:9px!important}
+}
+/* Keep satellite imagery full-color and hide intro overlay while inspecting actual masks. */
+.premium-v2 .map-workspace .map{filter:none!important}
+.premium-v2:has(.discovery-dock) .global-intro{display:none!important}

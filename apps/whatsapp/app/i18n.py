@@ -8,7 +8,7 @@ LANGUAGE_ALIASES = {
 
 MESSAGES = {
     "en": {
-        "language_prompt": "🌐 Choose language / भाषा चुनें / भाषा निवडा\n\n1️⃣ English\n2️⃣ हिन्दी\n3️⃣ मराठी",
+        "language_prompt": "🌐 Choose language / भाषा चुनें / भाषा निवडा\n\nEnglish\nहिन्दी\nमराठी\n\nSelect from the WhatsApp list, or reply with the language name",
         "language_saved": "✅ Language set to English.",
         "menu": "👋 Welcome to GeoSathi AI!\n\n1️⃣ Infrastructure Search 🛰️\n2️⃣ Road Damage Report 🛣️\n\nReply 1 or 2. Type language to change language.",
         "road_prompt": "🛣️ Please send a clear pothole/road-damage photo (one image).",
@@ -35,7 +35,7 @@ MESSAGES = {
         "search_failed": "⚠️ Search {search_id} could not finish. Please retry later.",
     },
     "hi": {
-        "language_prompt": "🌐 भाषा चुनें / Choose language / भाषा निवडा\n\n1️⃣ English\n2️⃣ हिन्दी\n3️⃣ मराठी",
+        "language_prompt": "🌐 भाषा चुनें / Choose language / भाषा निवडा\n\nEnglish\nहिन्दी\nमराठी\n\nSelect from the WhatsApp list, or reply with the language name",
         "language_saved": "✅ भाषा हिन्दी पर सेट कर दी गई है।",
         "menu": "👋 GeoSathi AI में आपका स्वागत है!\n\n1️⃣ इन्फ्रास्ट्रक्चर खोज 🛰️\n2️⃣ सड़क क्षति रिपोर्ट 🛣️\n\n1 या 2 भेजें। भाषा बदलने के लिए language या भाषा लिखें।",
         "road_prompt": "🛣️ गड्ढे/सड़क क्षति की एक साफ फोटो भेजें।",
@@ -62,7 +62,7 @@ MESSAGES = {
         "search_failed": "⚠️ खोज {search_id} पूरी नहीं हो सकी। कृपया फिर प्रयास करें।",
     },
     "mr": {
-        "language_prompt": "🌐 भाषा निवडा / Choose language / भाषा चुनें\n\n1️⃣ English\n2️⃣ हिन्दी\n3️⃣ मराठी",
+        "language_prompt": "🌐 भाषा निवडा / Choose language / भाषा चुनें\n\nEnglish\nहिन्दी\nमराठी\n\nSelect from the WhatsApp list, or reply with the language name",
         "language_saved": "✅ भाषा मराठीवर सेट केली आहे.",
         "menu": "👋 GeoSathi AI मध्ये आपले स्वागत आहे!\n\n1️⃣ पायाभूत सुविधा शोध 🛰️\n2️⃣ रस्ता नुकसान अहवाल 🛣️\n\n1 किंवा 2 पाठवा. भाषा बदलण्यासाठी language किंवा भाषा लिहा.",
         "road_prompt": "🛣️ खड्डा/रस्ता नुकसान याचा एक स्पष्ट फोटो पाठवा.",

@@ -12,3 +12,8 @@ __pycache__/
 *.npy
 /data/
 models/
+.vercel-deploy-main/
+node_modules/
+.next/
+.vercel/
+*.tsbuildinfo

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import maplibregl, { type Map as MapLibreMap } from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
+import type { Map as MapLibreMap } from "maplibre-gl";
 import { config } from "@/lib/config";
 import type { Bounds, GeoJsonCollection } from "@/lib/api/geosathi";
 import type { AtlasFeature } from "@/types/geo";
@@ -18,11 +19,29 @@ const satelliteLayerId = "atlas-satellite-raster";
 const satelliteTileTemplate = (key: string) => `https://api.maptiler.com/tiles/satellite-v2/{z}/{x}/{y}.jpg?key=${key}`;
 
 function featureCollection(features: AtlasFeature[], kind: AtlasFeature["kind"], isVisible: boolean): GeoJSON.FeatureCollection {
-  return { type: "FeatureCollection", features: isVisible ? features.filter((feature) => feature.kind === kind).map((feature) => ({ type: "Feature", properties: { id: feature.id, title: feature.title, synthetic: "Synthetic demo feature" }, geometry: feature.geometry })) : [] };
+  return { type: "FeatureCollection", features: isVisible ? features.filter((feature) => feature.kind === kind).map((feature) => ({ type: "Feature", properties: { id: feature.id, title: feature.title, synthetic: feature.status === "gis_verified" ? "GIS geometry" : feature.status === "candidate" ? "Imagery tile candidate" : "Synthetic demo feature" }, geometry: feature.geometry })) : [] };
 }
 function boundsFor(feature: AtlasFeature) {
-  const coordinates = feature.geometry.type === "Point" ? [feature.geometry.coordinates] : feature.geometry.type === "LineString" ? feature.geometry.coordinates : feature.geometry.coordinates[0];
-  return coordinates.reduce((bounds, coordinate) => bounds.extend(coordinate as [number, number]), new maplibregl.LngLatBounds(coordinates[0] as [number, number], coordinates[0] as [number, number]));
+  const known = feature.bounds;
+  if (known && known.every(Number.isFinite)) {
+    const [west, south, east, north] = known;
+    const dx = west === east ? 0.00008 : 0;
+    const dy = south === north ? 0.00008 : 0;
+    return new maplibregl.LngLatBounds([west-dx, south-dy], [east+dx, north+dy]);
+  }
+  const coords: Array<[number, number]> = [];
+  function collect(value: unknown): void {
+    if (!Array.isArray(value)) return;
+    if (value.length >= 2 && typeof value[0] === "number" && typeof value[1] === "number") {
+      coords.push([value[0], value[1]]);
+    } else for (const item of value) collect(item);
+  }
+  collect(feature.geometry.coordinates);
+  if (!coords.length) return new maplibregl.LngLatBounds([73.856,18.520], [73.857,18.521]);
+  const minX=Math.min(...coords.map(p=>p[0])), maxX=Math.max(...coords.map(p=>p[0]));
+  const minY=Math.min(...coords.map(p=>p[1])), maxY=Math.max(...coords.map(p=>p[1]));
+  return new maplibregl.LngLatBounds([minX===maxX?minX-0.00008:minX, minY===maxY?minY-0.00008:minY],
+                                   [minX===maxX?maxX+0.00008:maxX, minY===maxY?maxY+0.00008:maxY]);
 }
 function isSatelliteResourceError(event: unknown, tileOrigin: string) {
   const candidate = event as { sourceId?: unknown; source?: { id?: unknown }; tile?: { source?: unknown }; error?: { message?: unknown } };
@@ -51,13 +70,15 @@ export function AtlasMap({ features, visible, selected, onSelect, cameraTarget, 
     instance.on("load", () => {
       groups.forEach((kind) => {
         instance.addSource(sourceId(kind), { type: "geojson", data: featureCollection([], kind, false) });
-        if (kind === "search") { instance.addLayer({ id: layerId(kind), type: "fill", source: sourceId(kind), paint: { "fill-color": "#d7774f", "fill-opacity": 0.22, "fill-outline-color": "#a44932" } }); instance.addLayer({ id: `${layerId(kind)}-edge`, type: "line", source: sourceId(kind), paint: { "line-color": "#a44932", "line-width": 2.8, "line-dasharray": [2, 1] } }); }
+        if (kind === "search") { instance.addLayer({ id: layerId(kind), type: "fill", source: sourceId(kind), paint: { "fill-color": "#d7774f", "fill-opacity": 0.34, "fill-outline-color": "#a44932" } }); instance.addLayer({ id: `${layerId(kind)}-edge`, type: "line", source: sourceId(kind), paint: { "line-color": "#a44932", "line-width": 3, "line-dasharray": [2, 1] } }); }
         else if (kind === "hazard") instance.addLayer({ id: layerId(kind), type: "circle", source: sourceId(kind), paint: { "circle-radius": 7, "circle-color": "#bd432e", "circle-stroke-width": 2.5, "circle-stroke-color": "#fff9eb" } });
         else instance.addLayer({ id: layerId(kind), type: "line", source: sourceId(kind), layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#315e4b", "line-width": 4, "line-opacity": 0.9, "line-dasharray": [1.4, 0.7] } });
-        const interactive = kind === "search" ? [layerId(kind), `${layerId(kind)}-edge`] : [layerId(kind)];
+        if (kind === "search") instance.addLayer({ id: `${layerId(kind)}-point`, type: "circle", source: sourceId(kind), filter: ["==", "$type", "Point"], paint: { "circle-radius": 7, "circle-color": "#ffd84d", "circle-stroke-width": 2, "circle-stroke-color": "#242424" } });
+        const interactive = kind === "search" ? [layerId(kind), `${layerId(kind)}-edge`, `${layerId(kind)}-point`] : [layerId(kind)];
         interactive.forEach((layer) => { instance.on("click", layer, (event) => { const id = event.features?.[0]?.properties?.id; const feature = featureLookup.current.find((candidate) => candidate.id === id); if (!feature) return; onSelectRef.current(feature); const popup = document.createElement("div"); const title = document.createElement("strong"); const provenance = document.createElement("span"); title.textContent = feature.title; provenance.textContent = feature.source; popup.append(title, provenance); new maplibregl.Popup({ offset: 10, closeButton: false, className: "atlas-popup" }).setLngLat(event.lngLat).setDOMContent(popup).addTo(instance); }); instance.on("mouseenter", layer, () => { instance.getCanvas().style.cursor = "pointer"; }); instance.on("mouseleave", layer, () => { instance.getCanvas().style.cursor = ""; }); });
       });
       instance.addSource("atlas-selected", { type: "geojson", data: featureCollection([], "search", false) });
+      instance.addLayer({ id: "atlas-selected-fill", type: "fill", source: "atlas-selected", filter: ["==", "$type", "Polygon"], paint: { "fill-color": "#ffe360", "fill-opacity": 0.30, "fill-outline-color": "#fff7d7" } });
       instance.addLayer({ id: "atlas-selected-polygon", type: "line", source: "atlas-selected", filter: ["==", "$type", "Polygon"], paint: { "line-color": "#f9f0dc", "line-width": 4, "line-opacity": 0.95 } });
       instance.addLayer({ id: "atlas-selected-line", type: "line", source: "atlas-selected", filter: ["==", "$type", "LineString"], paint: { "line-color": "#f9f0dc", "line-width": 7, "line-opacity": 0.9 } });
       instance.addLayer({ id: "atlas-selected-point", type: "circle", source: "atlas-selected", filter: ["==", "$type", "Point"], paint: { "circle-radius": 12, "circle-color": "#f8eed9", "circle-opacity": 0.2, "circle-stroke-color": "#f8eed9", "circle-stroke-width": 3 } });
