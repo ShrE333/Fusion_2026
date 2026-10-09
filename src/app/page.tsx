@@ -64,7 +64,30 @@ export default function Home() {
     try {
       const next = await runDiscovery(mode, text, abort.signal);
       if (id !== requestId.current) return;
-      setResponse(next); setState(next.results.length ? "success" : "empty");
+      setResponse(next);
+      if (next.results.length) {
+        setState("success");
+        const first = next.results[0];
+        setSelected(first);
+        setShowDiscovery(true);
+        if (first.bounds) {
+          const [minLon, minLat, maxLon, maxLat] = first.bounds;
+          const nextCameraId = cameraId + 1;
+          setCameraId(nextCameraId);
+          setCameraTarget({
+            id: nextCameraId,
+            coordinates: [(minLon + maxLon) / 2, (minLat + maxLat) / 2],
+            zoom: 15,
+          });
+        }
+        setMapContext(
+          isDemo
+            ? "Map focused on synthetic result geometry."
+            : "Map focused on the top backend result. Returned polygons/bounding boxes are highlighted."
+        );
+      } else {
+        setState("empty");
+      }
     } catch (cause) {
       if (abort.signal.aborted || id !== requestId.current) return;
       setState("error"); setRequestError(cause instanceof Error ? cause.message : "Search could not be completed.");

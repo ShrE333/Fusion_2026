@@ -50,6 +50,49 @@ function detectGisLayer(query: string): GisLayer | null {
   return null;
 }
 
+type PlaceSubtype = "hospital" | "school" | "temple" | "restaurant" | "shop" | "market" | "library";
+
+function detectPlaceSubtype(query: string): PlaceSubtype | null {
+  const q = query.toLocaleLowerCase();
+  const groups: Array<[PlaceSubtype, string[]]> = [
+    ["hospital", ["hospital", "अस्पताल", "रुग्णालय"]],
+    ["school", ["school", "स्कूल", "शाळा"]],
+    ["temple", ["temple", "मंदिर"]],
+    ["restaurant", ["restaurant", "रेस्तरां", "रेस्टॉरंट"]],
+    ["library", ["library", "पुस्तकालय", "ग्रंथालय"]],
+    ["market", ["market", "marketplace", "बाज़ार", "बाजार"]],
+    ["shop", ["shop", "दुकान"]],
+  ];
+  for (const [subtype, words] of groups) {
+    if (words.some((word) => q.includes(word))) return subtype;
+  }
+  return null;
+}
+
+function stringProp(props: Record<string, unknown>, key: string): string {
+  const value = props[key];
+  return typeof value === "string" ? value.toLocaleLowerCase() : "";
+}
+
+function matchesPlaceSubtype(feature: GeoFeature, subtype: PlaceSubtype | null): boolean {
+  if (!subtype) return true;
+  const props = feature.properties || {};
+  const amenity = stringProp(props, "amenity");
+  const healthcare = stringProp(props, "healthcare");
+  const shop = stringProp(props, "shop");
+  const tourism = stringProp(props, "tourism");
+  const name = `${stringProp(props, "name")} ${stringProp(props, "name:en")}`;
+
+  if (subtype === "hospital") return amenity === "hospital" || healthcare === "hospital" || /hospital|medical center|medical centre/.test(name);
+  if (subtype === "school") return amenity === "school" || /school|विद्यालय|शाळा/.test(name);
+  if (subtype === "temple") return (amenity === "place_of_worship" && (stringProp(props, "religion") === "hindu" || /temple|मंदिर/.test(name))) || /temple|मंदिर/.test(name);
+  if (subtype === "restaurant") return amenity === "restaurant" || /restaurant|रेस्टॉरंट|रेस्तरां/.test(name);
+  if (subtype === "library") return amenity === "library" || /library|ग्रंथालय|पुस्तकालय/.test(name);
+  if (subtype === "market") return amenity === "marketplace" || /market|bazaar|bazar|बाज़ार|बाजार/.test(name);
+  if (subtype === "shop") return Boolean(shop) || tourism === "mall" || /shop|store|दुकान/.test(name);
+  return true;
+}
+
 function coordinatePairs(value: unknown, pairs: Array<[number, number]>): void {
   if (!Array.isArray(value)) return;
   if (
@@ -119,6 +162,7 @@ export async function POST(request: Request) {
   const [west, south, east, north] = bbox;
 
   const gisLayer = detectGisLayer(query);
+  const placeSubtype = gisLayer === "places" ? detectPlaceSubtype(query) : null;
   let gisAttempted = false;
   let gisError: string | null = null;
 
@@ -139,6 +183,7 @@ export async function POST(request: Request) {
         gisError = `GeoSathi GIS returned HTTP ${gisResponse.status}`;
       } else if (gisRaw?.type === "FeatureCollection" && Array.isArray(gisRaw.features)) {
         const results = gisRaw.features
+          .filter((feature) => gisLayer !== "places" || matchesPlaceSubtype(feature, placeSubtype))
           .map((feature, index) => {
             const fb = featureBounds(feature);
             if (!fb) return null;
