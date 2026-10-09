@@ -1,60 +1,47 @@
-# fusion_2026 — GeoSathi AI
+# Fusion 2026 — GeoSathi AI
 
-WhatsApp-first geospatial intelligence for FUSION 2026: GEOAI-05 infrastructure search (primary) and a GEOAI-03 road-damage-report extension.
+WhatsApp-first geospatial intelligence. GEOAI-05 infrastructure search is primary; image + pinned-location road damage reporting extends GEOAI-03. All actual detection/search results require real inference and GIS verification.
 
-## Status (initial commit)
-- ✅ Existing WAHA **GOWS** service running on GCP EasyPanel, paired WhatsApp session (managed outside this repository).
-- ✅ FastAPI adapter source: WAHA signed webhook, 1/2 conversational menu, image + reported-location intake, infrastructure query + search-location intake, SQLite state/idempotency, outbound replies.
-- 🟡 AI endpoints are **optional and not yet integrated**. The adapter saves pending work instead of fabricating detections or map search results.
-- ⏳ Member 2 AWS/PostGIS/pgvector and OSM/imagery integration; Member 3 trained YOLO ONNX worker; frontend MapLibre integration.
+## Current release: v0.2
+- **WAHA GOWS** connected on GCP EasyPanel (external WhatsApp session).
+- **FastAPI WhatsApp adapter** under `apps/whatsapp`: HMAC authenticated webhook, two-option menu, persistent SQLite state, photo+pin and query+pin intake. **NEW:** tries native WAHA interactive `sendList`, falling back automatically to numbered text if unsupported.
+- **NEW:** `apps/vlm` SkyCLIP ViT-B/32 inference service with official checkpoint loader, offline image embedding indexing, authenticated text-to-image search, bbox filters and typed output. **Requires official weights and real georeferenced imagery before producing searches**; no bundled model weights or fabricated results.
+- **Not yet connected:** remote road YOLO from Member 3, AWS GIS from Member 2, frontend map from Member 4.
 
-## Team and branches
-- Member 1: WhatsApp gateway + future SkyCLIP (ViT-B/32) retrieval.
-- Member 2: AWS API, GIS data, imagery catalogue, PostGIS + pgvector.
-- Member 3: trained road-damage YOLO ONNX worker (RDD2022 or validated equivalent).
-- Member 4: MapLibre/Vercel map and evidence UI.
-- Member branches → `retract` integration/staging → `main` after verification. Retain existing actual branch names.
+## Team and Git
+- Member 1: WhatsApp + SkyCLIP (`member-1-whatsapp-vlm`).
+- Member 2: AWS/PostGIS imagery catalogue and spatial query engine.
+- Member 3: YOLO ONNX road hazard model worker.
+- Member 4: Next.js/MapLibre frontend (currently independent `frontend` branch).
+- Each member branch -> `retract` staging PR -> `main` after validation. Never merge independent root-level frontend over main; migrate into `apps/frontend` from common base first.
 
-## Repository
-- `apps/whatsapp/` — working first-commit adapter and tests.
-- `docs/` — integration contract and deployment notes.
-
-## Local run
-```bash
-cd apps/whatsapp
-cp .env.example .env
-# Fill WAHA_API_KEY and WAHA_HMAC_SECRET; never commit .env
-python -m venv .venv
-source .venv/bin/activate   # on Windows PowerShell: .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-pytest -q
+## Project layout
+```text
+apps/whatsapp/    WAHA webhook and conversational bot (existing EasyPanel deployment)
+apps/vlm/         SkyCLIP model, offline indexing, private search API (deploy separately)
+docs/INTEGRATION.md
 ```
 
-## Deploy on GCP EasyPanel
-1. In existing `fusion-2026` project, create a **new App service** `whatsapp-bot` from GitHub (the member branch) with **Dockerfile path** `apps/whatsapp/Dockerfile` and **build context** `apps/whatsapp` (if EasyPanel cannot set build context, configure an alternative Docker build rooted at that folder).
-2. Expose container port **8000** on an HTTPS domain. Set `.env.example` values as EasyPanel environment variables (not committed). Set `WAHA_URL` to the current HTTPS WAHA domain. `WAHA_API_KEY` must equal its current API key. Generate a **separate** 32+-character `WAHA_HMAC_SECRET`.
-3. Mount persistent storage `/data` (SQLite and incoming image evidence). Configure backup and privacy controls for PII/media; do not share or expose `/data` publicly.
-4. In WAHA session settings, add exactly one webhook targeting `https://YOUR-BOT-DOMAIN/webhooks/waha`, event `message`, HMAC key equal to `WAHA_HMAC_SECRET`. WAHA signs raw body using SHA-512; the adapter verifies it.
-5. Send `hi` **from another WhatsApp account** to your connected bot number. Reply `1` (infrastructure) or `2` (road), and follow the prompts. You should see a pending result until actual inference/spatial workers are connected.
-6. Restrict frontend endpoints and WAHA dashboard/API to trusted users; keep API secrets server-side. This is an MVP, not an enterprise-ready service.
+## Deploy WhatsApp update (existing EasyPanel service)
+1. Extract upgrade ZIP into local project root, **overwriting matching code/docs only**. Keep your local `.git`, any `.env` secrets, and teammate folders intact.
+2. `git switch member-1-whatsapp-vlm && git status && git add apps/whatsapp apps/vlm docs README.md && git commit -m "feat: add interactive WAHA list fallback and SkyCLIP retrieval service" && git push origin member-1-whatsapp-vlm`.
+3. In EasyPanel `fusion-2026` -> `whatsapp-bot`, source branch stays `member-1-whatsapp-vlm`, build context stays `apps/whatsapp`, Dockerfile stays `Dockerfile` (relative to context). Click **Deploy** to rebuild with menu support. Existing `/data` volume and `WAHA_API_KEY`/`WAHA_HMAC_SECRET` should remain unchanged. **Do not reinstall WAHA.**
+4. Send `hi`. If WAHA edition/GOWS accepts `/api/sendList`, you'll see an interactive list. Otherwise the text menu appears automatically. Choosing list rows or typing `1`/`2` should work.
 
-## Real models and deployment plan
-- **Phase 1 (this commit):** No pretrained model is loaded in the bot. The flow, webhook, image intake, and test suite work on a CPU-only GCP instance; reports remain `pending_inference` and imagery searches `pending_index` without integrations.
-- **Phase 2 (infrastructure):** pretrained **SkyCLIP ViT-B/32 (`SkyCLIP_ViT_B32_top50pct`)** from the original SkyScript release; prepare georeferenced tile embeddings *offline* and implement text-image ranking in a separate model service. Model checkpoint must be downloaded, deployed and tested independently. Pair with PostGIS for actual geographic results; CLIP similarity is not object verification.
-- **Phase 2 (road):** Member 3's **fine-tuned YOLO exported to ONNX** on an inference host with sufficient CPU/GPU. No generic YOLO checkpoint should be claimed to detect potholes without validation. Shared-file paths in this starter are for co-located workers only; for an AWS/GCP split define authenticated object-storage access rather than forwarding local paths.
+## SkyCLIP model upgrade
+See [apps/vlm/README.md](apps/vlm/README.md) for the original checkpoint download, image manifest, indexing command, model Docker build, and authenticated `/search` API. Dockerizing the service does **not** automatically install the weights/data: these must be downloaded separately and mounted. On resource-constrained GCP, deploy model to a separate CPU VM or GPU provider after checking available RAM/CPU/GPU.
 
-## API handoff
-- `GET /health` (no credentials)
-- `POST /webhooks/waha` requires `X-Webhook-Hmac` SHA-512 signature using raw body; only `message` handled.
-- Optional internal worker `ROAD_INFERENCE_URL` receives `{report_id,image_path,location}` **only for co-located worker**. Remote worker requires a signed media handoff upgrade.
-- Optional `INFRA_SEARCH_URL` receives `{query_id,query,location}`; results must come from actual imagery index + GIS.
+## Tests
+```powershell
+cd apps/whatsapp
+python -m pip install -r requirements.txt
+python -m pytest -q
+```
 
-## Security / limitations
-- Never share API keys, HMAC keys or live session tokens.
-- Only accepts private inbound chats (ignores groups and bot's own messages).
-- Uses message-id deduplication; message processing happens after fast webhook acknowledgement. For higher reliability replace FastAPI background tasks with a durable queue/outbox before heavy usage.
-- Current location parser covers common location payload variants; verify actual GOWS payload with a redacted sample if a location is not detected.
-- Incoming images max 8 MB. WAHA must provide `media.url`; remote media is downloaded only from configured WAHA `/api/files/` path.
-- User pin is **reported location**, not the pothole's independently verified position.
-- Demo is limited to the chosen geographic study area and validated model classes.
+## Interface limitations
+- WAHA list API is edition/engine-dependent and may fail; safe text fallback is expected.
+- SkyCLIP similarity is a candidate-ranking score, **not** a calibrated probability/confidence or object detection.
+- This VLM service returns real tile matches *only when* indexed imagery and weights exist; Member 2's GIS spatial joins are required to answer spatial relationship questions.
+- Member 3 image inference requires securely accessible media; the current WhatsApp adapter uses local file paths and **cannot** call a remote YOLO host correctly without signed object-storage upload support.
+- The road location pin is a user-reported coordinate, not precisely measured defect geolocation.
+- Use private/authenticated VLM networking, encrypted HTTPS, and restrict WhatsApp API/dashboard access. Do not commit private photos, database files, model weights, or credentials.
