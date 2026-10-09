@@ -1,10 +1,23 @@
-# GeoSathi AI — Cloud Run Production Deployment Dependencies
-# Ultra-lightweight: No PyTorch, No CUDA, No Ultralytics (~200MB container vs ~6GB)
+# GeoSathi AI — Cloud Run Production Deployment Dependencies (v2.0 — Dual Model)
+# Model V1: YOLO11n ONNX Pothole Detector  (~10 MB model, ~200 MB runtime)
+# Model V2: Mask2Former Swin-Large Mapillary  (~866 MB model, ~3 GB runtime)
+# No GPU required — CPU inference for both models.
 
+# ── FastAPI / Server ──────────────────────────────────────────────────────────
 fastapi>=0.110.0
 uvicorn[standard]>=0.28.0
 python-multipart>=0.0.9
+pydantic>=2.0.0
+
+# ── Model V1 (ONNX Pothole Detector) ─────────────────────────────────────────
 onnxruntime>=1.16.0
 opencv-python-headless>=4.8.0
 numpy>=1.24.0
-pydantic>=2.0.0
+
+# ── Model V2 (Mask2Former Semantic Segmentor) ─────────────────────────────────
+# CPU-only PyTorch — saves ~2 GB vs CUDA build; sufficient for Cloud Run
+torch>=2.1.0
+torchvision>=0.16.0
+transformers>=4.38.0
+Pillow>=10.0.0
+scipy>=1.11.0
