@@ -11,7 +11,7 @@ import type { AtlasFeature, DiscoveryResult, SearchResponse } from "@/types/geo"
 import { isGeoGeometry } from "@/lib/geo-validation";
 
 const puneCoordinates: [number, number] = [73.8567, 18.5204];
-const examples = ["Find hospitals near me", "Find hotels near me", "Find cafes near me", "Find restaurants near me", "Find buildings near me", "Find unpaved roads near me", "Find schools near me"];
+const examples = ["Find open land within 500 m", "Find forests within 1 km", "Find rivers within 500 m", "Find open plots larger than 2000 m2 within 1 km", "Find hospitals near me", "Find hotels near me", "Find cafes near me", "Find restaurants near me", "Find buildings near me", "Find unpaved roads near me", "Find schools near me"];
 type State = "idle" | "loading" | "success" | "empty" | "error";
 const vectors = (results: DiscoveryResult[]): AtlasFeature[] => { const seen = new Set<string>(); return results.flatMap((r) => r.osmFeatures).filter((f) => !seen.has(f.osmId) && Boolean(seen.add(f.osmId))).map((f) => ({ id: f.osmId, kind: "infrastructure", title: f.type, geometry: f.geometry, source: "Result-provided OSM vector" })); };
 const exportable = (r: SearchResponse | null) => Boolean(r?.export.type === "FeatureCollection" && r.export.features.every((f) => f?.type === "Feature" && isGeoGeometry(f.geometry)));
@@ -75,7 +75,7 @@ export default function Home() {
         setMapContext(
           isDemo
             ? "Map focused on synthetic result geometry."
-            : "Map focused on the top backend result. Returned polygons/bounding boxes are highlighted."
+            : next.search_meta?.source === "sentinel2" ? "Sentinel-2 land-cover candidates highlighted (approximate 10 m raster cells, NOT legal building plots)." : "Map focused on the top backend result. Returned polygons/bounding boxes are highlighted."
         );
       } else {
         setState("empty");

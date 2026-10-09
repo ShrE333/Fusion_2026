@@ -47,7 +47,9 @@ function InspectionWorkspace(){
       const response=await runDiscovery("api",q,location);
       if(nextId!==requestId.current)return;
       setResults(response.results);
-      setNotice(response.search_meta?.source==="gis"
+      setNotice(response.search_meta?.source==="sentinel2"
+        ? `${response.results.length} Sentinel-2 land-cover candidate area(s). Pixel-grid polygons are NOT verified vacant parcels or construction approvals.`
+        : response.search_meta?.source==="gis"
         ? `${response.results.length} GIS feature(s); polygons are OSM footprints, not AI-generated masks.`
         : response.search_meta?.source==="skyclip"
           ? `${response.results.length} imagery tile candidate(s). Rectangles are TILE footprints, not building detections.`

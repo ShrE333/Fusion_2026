@@ -25,5 +25,5 @@ export interface GeoJsonExport {
 }
 export interface SearchResponse {
   query:string;intent:QueryIntent;results:DiscoveryResult[];export:GeoJsonExport;
-  search_meta?:{source:"gis"|"skyclip"|"none";layer?:string;search_bbox?:[number,number,number,number];center?:{lat:number;lon:number};issue?:string|null};
+  search_meta?:{source:"gis"|"skyclip"|"sentinel2"|"none";layer?:string;search_bbox?:[number,number,number,number];center?:{lat:number;lon:number};issue?:string|null};
 }
