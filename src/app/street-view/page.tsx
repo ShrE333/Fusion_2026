@@ -11,7 +11,7 @@ import { MapillarySearchError, searchMapillaryImages, type MapillaryImage } from
 import { config } from "@/lib/config";
 
 const PUNE: [number, number] = [73.8567, 18.5204];
-const TOKEN_SETUP_MESSAGE = "Street imagery is not configured. Add NEXT_PUBLIC_MAPILLARY_ACCESS_TOKEN with a fresh browser client token restricted to this site's authorized origins.";
+const TOKEN_SETUP_MESSAGE = "Street imagery lookup is not configured. Configure the private server MAPILLARY_ACCESS_TOKEN; the viewer separately needs a restricted browser token.";
 type CoverageState = "unconfigured" | "idle" | "loading" | "success" | "empty" | "error" | "auth";
 
 const coordinateText = (coordinates: [number, number]) => `${coordinates[1].toFixed(5)}, ${coordinates[0].toFixed(5)}`;
@@ -25,17 +25,12 @@ export default function StreetViewPage() {
   const [images, setImages] = useState<MapillaryImage[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [activeImageId, setActiveImageId] = useState<string>();
-  const [coverageState, setCoverageState] = useState<CoverageState>(config.mapillaryAccessToken ? "idle" : "unconfigured");
+  const [coverageState, setCoverageState] = useState<CoverageState>("idle");
   const [message, setMessage] = useState("");
   const requestId = useRef(0);
   const request = useRef<AbortController | undefined>(undefined);
 
   const searchCoverage = useCallback(async (searchCenter: [number, number] = center) => {
-    if (!config.mapillaryAccessToken) {
-      setCoverageState("unconfigured");
-      setMessage("Street imagery is not configured yet. Add a browser-restricted Mapillary client access token to NEXT_PUBLIC_MAPILLARY_ACCESS_TOKEN and restart the app.");
-      return;
-    }
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -46,14 +41,14 @@ export default function StreetViewPage() {
     setMessage("");
     setCoverageState("loading");
     try {
-      const found = await searchMapillaryImages(searchCenter, config.mapillaryAccessToken, controller.signal);
+      const found = await searchMapillaryImages(searchCenter, controller.signal);
       if (controller.signal.aborted || requestId.current !== id) return;
       setImages(found);
       setCoverageState(found.length ? "success" : "empty");
     } catch (error) {
       if (controller.signal.aborted || requestId.current !== id) return;
       if (error instanceof MapillarySearchError) {
-        setCoverageState(error.kind === "auth" ? "auth" : "error");
+        setCoverageState(error.kind === "unconfigured" ? "unconfigured" : error.kind === "auth" ? "auth" : "error");
         setMessage(error.message);
       } else {
         setCoverageState("error");
@@ -63,7 +58,7 @@ export default function StreetViewPage() {
   }, [center]);
 
   useEffect(() => {
-    const initialSearch = config.mapillaryAccessToken ? window.setTimeout(() => { void searchCoverage(center); }, 0) : undefined;
+    const initialSearch = window.setTimeout(() => { void searchCoverage(center); }, 0);
     return () => {
       if (initialSearch !== undefined) window.clearTimeout(initialSearch);
       request.current?.abort();
@@ -80,7 +75,7 @@ export default function StreetViewPage() {
       setImages([]);
       setSelectedId(undefined);
       setActiveImageId(undefined);
-      setCoverageState(config.mapillaryAccessToken ? "idle" : "unconfigured");
+      setCoverageState("idle");
       setMessage("");
     }
     setCenter(coordinates);
@@ -106,7 +101,7 @@ export default function StreetViewPage() {
     setImages([]);
     setSelectedId(undefined);
     setActiveImageId(undefined);
-    setCoverageState(config.mapillaryAccessToken ? "idle" : "unconfigured");
+    setCoverageState("idle");
     setMessage("");
     setCenter(coordinates);
     setCoordinateInput(coordinateText(coordinates));

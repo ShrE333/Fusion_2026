@@ -18,7 +18,7 @@ const sourceId = (kind: AtlasFeature["kind"]) => `atlas-${kind}`;
 const layerId = (kind: AtlasFeature["kind"]) => `${sourceId(kind)}-visual`;
 const satelliteSourceId = "atlas-satellite";
 const satelliteLayerId = "atlas-satellite-raster";
-const satelliteTileJson = (key: string) => `https://api.maptiler.com/tiles/satellite-v4/tiles.json?${new URLSearchParams({key})}`;
+const satelliteTileJson = (key: string) => `https://api.maptiler.com/tiles/satellite-v2/tiles.json?${new URLSearchParams({key})}`;
 
 function gpsAccuracyPolygon(coords: [number,number], accuracy: number): GeoJSON.Polygon {
   const radius=Math.max(0,accuracy)/6371008.8;
@@ -83,7 +83,7 @@ export function AtlasMap({ features, visible, selected, onSelect, cameraTarget, 
     const instance = new maplibregl.Map({ container: container.current, center: initial?.center ?? [73.8567, 18.5204], zoom: initial?.zoom ?? 12.2, style: { version: 8, sources: { osm: { type: "raster", tiles: [config.osmTileUrl], tileSize: 256, attribution: "© <a href='https://www.openstreetmap.org/copyright' target='_blank' rel='noreferrer'>OpenStreetMap contributors</a>" } }, layers: [{ id: "osm", type: "raster", source: "osm" }] } });
     instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     const satelliteOrigin = config.mapTilerApiKey ? "https://api.maptiler.com" : "";
-    instance.on("error", (event) => { if (basemapRef.current === "satellite" && satelliteOrigin && !satelliteErrorReported.current && isSatelliteResourceError(event, satelliteOrigin)) { satelliteErrorReported.current = true; setSatelliteError("Satellite could not load. Check that the MapTiler browser key allows this domain and satellite-v4 access, then retry Satellite. Street remains available."); } });
+    instance.on("error", (event) => { if (basemapRef.current === "satellite" && satelliteOrigin && !satelliteErrorReported.current && isSatelliteResourceError(event, satelliteOrigin)) { satelliteErrorReported.current = true; basemapRef.current="street"; if(instance.getLayer(satelliteLayerId))instance.setLayoutProperty(satelliteLayerId,"visibility","none"); instance.setLayoutProperty("osm","visibility","visible"); setSatelliteError("Satellite imagery failed to load. Street restored. Check provider access, allowed domain and network, then retry Satellite."); setBasemap("street"); } });
     instance.on("load", () => {
       groups.forEach((kind) => {
         instance.addSource(sourceId(kind), { type: "geojson", data: featureCollection([], kind, false) });
@@ -128,6 +128,14 @@ export function AtlasMap({ features, visible, selected, onSelect, cameraTarget, 
     if(!instance) return;
     const syncSatellite = () => {
       if(!instance.getLayer("osm") || !instance.getLayer(layerId("search"))) return;
+      // Leave the street raster underneath imagery while TileJSON/tiles load,
+      // and behind any gaps or failed tiles. Never hide the usable basemap.
+      instance.setLayoutProperty("osm","visibility","visible");
+      if(basemap==="street"){
+        if(instance.getLayer(satelliteLayerId))instance.removeLayer(satelliteLayerId);
+        if(instance.getSource(satelliteSourceId))instance.removeSource(satelliteSourceId);
+        return;
+      }
       if(config.mapTilerApiKey) {
         if(!instance.getSource(satelliteSourceId)) instance.addSource(satelliteSourceId,{
           type:"raster",url:satelliteTileJson(config.mapTilerApiKey),tileSize:256,
@@ -136,7 +144,6 @@ export function AtlasMap({ features, visible, selected, onSelect, cameraTarget, 
         if(!instance.getLayer(satelliteLayerId)) instance.addLayer({id:satelliteLayerId,type:"raster",source:satelliteSourceId,layout:{visibility:"none"}},layerId("search"));
       }
       const enabled=basemap==="satellite" && Boolean(config.mapTilerApiKey && instance.getLayer(satelliteLayerId));
-      instance.setLayoutProperty("osm","visibility",enabled?"none":"visible");
       if(instance.getLayer(satelliteLayerId)) instance.setLayoutProperty(satelliteLayerId,"visibility",enabled?"visible":"none");
     };
     if(instance.isStyleLoaded() && instance.getLayer(layerId("search")))syncSatellite();else instance.once("load",syncSatellite);

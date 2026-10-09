@@ -8,7 +8,7 @@ export type MapillaryImage = {
   sequenceId?: string;
 };
 
-export type MapillarySearchFailureKind = "auth" | "provider" | "network";
+export type MapillarySearchFailureKind = "auth" | "provider" | "network" | "unconfigured";
 
 export class MapillarySearchError extends Error {
   constructor(message: string, readonly kind: MapillarySearchFailureKind) {
@@ -40,33 +40,29 @@ function isValidCoordinatePair(value: unknown): value is [number, number] {
 
 export async function searchMapillaryImages(
   coordinates: [number, number],
-  accessToken: string,
   signal: AbortSignal,
 ): Promise<MapillaryImage[]> {
   const [longitude, latitude] = coordinates;
-  const latitudeDelta = MAPILLARY_SEARCH_HALF_EXTENT_METERS / 111_320;
-  const longitudeDelta = MAPILLARY_SEARCH_HALF_EXTENT_METERS / (111_320 * Math.cos(latitude * Math.PI / 180));
   const params = new URLSearchParams({
-    fields: "id,computed_geometry,captured_at,compass_angle,computed_compass_angle,camera_type,thumb_256_url,sequence",
-    bbox: [longitude - longitudeDelta, latitude - latitudeDelta, longitude + longitudeDelta, latitude + latitudeDelta].join(","),
-    limit: MAPILLARY_SEARCH_LIMIT.toString(),
+    lat: String(latitude), lon: String(longitude),
   });
 
   let response: Response;
   try {
-    response = await fetch(`https://graph.mapillary.com/images?${params}`, {
-      headers: { Authorization: `OAuth ${accessToken}` },
-      signal,
-    });
+    response = await fetch(`/api/mapillary/images?${params}`, { signal });
   } catch (error) {
     if (signal.aborted) throw error;
     throw new MapillarySearchError("Mapillary could not be reached. Check your connection and try again.", "network");
   }
 
   if (response.status === 401 || response.status === 403) {
-    throw new MapillarySearchError("Mapillary rejected the access token. Check that the browser token is valid and enabled for this app.", "auth");
+    throw new MapillarySearchError("Mapillary lookup authorization failed. Check the server provider configuration.", "auth");
   }
   if (!response.ok) {
+    const error = await response.json().catch(()=>null) as {error?:string;kind?:MapillarySearchFailureKind}|null;
+    if(error?.kind==="unconfigured")throw new MapillarySearchError("Mapillary lookup is not configured on the server.","unconfigured");
+    if(response.status===429)throw new MapillarySearchError("Mapillary lookup rate limit reached. Retry shortly.","provider");
+    if(response.status===504)throw new MapillarySearchError("Mapillary lookup timed out. Retry shortly.","network");
     throw new MapillarySearchError(`Mapillary image search failed (HTTP ${response.status}). Try again shortly.`, "provider");
   }
 
@@ -80,7 +76,11 @@ export async function searchMapillaryImages(
     throw new MapillarySearchError("Mapillary returned an unexpected image-search response.", "provider");
   }
 
-  return payload.data.flatMap((raw: unknown) => {
+  return normalizeMapillaryImages(payload.data);
+}
+
+export function normalizeMapillaryImages(data:unknown[]):MapillaryImage[] {
+  return data.slice(0,MAPILLARY_SEARCH_LIMIT).flatMap((raw: unknown) => {
     if (!raw || typeof raw !== "object") return [];
     const item = raw as GraphImage;
     const point = item.computed_geometry;

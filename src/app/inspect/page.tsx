@@ -84,9 +84,8 @@ function InspectionWorkspace(){
     const controller=new AbortController();
     const timer=setTimeout(()=>{
     setStreetError("");setImages([]);setImageId("");
-    if(!config.mapillaryAccessToken){setStreetError("Mapillary browser token is not set on Vercel. Satellite/street basemaps remain usable.");return;}
     setStreetLoading(true);
-    searchMapillaryImages(streetLocation,config.mapillaryAccessToken,controller.signal).then(found=>{
+    searchMapillaryImages(streetLocation,controller.signal).then(found=>{
       if(current!==streetRequestId.current||controller.signal.aborted)return;
       const sorted=[...found].sort((a,b)=>
         Math.hypot(a.coordinates[0]-streetLocation[0],a.coordinates[1]-streetLocation[1]) -
