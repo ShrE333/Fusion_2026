@@ -63,3 +63,20 @@
 @media(max-width:950px) and (min-width:801px){.street-workspace{grid-template-columns:minmax(300px,.85fr) minmax(340px,1.15fr);right:14px;left:86px;gap:10px}.street-live-header{left:86px;right:14px}.street-location-actions button{font-size:7px}}
 @media(max-width:800px){.street-page-live{min-height:100dvh;overflow-x:hidden;overflow-y:auto}.street-live-header{top:11px;left:66px;right:10px}.street-live-header h1{font-size:18px}.street-live-header>span{display:none}.street-workspace{position:relative;inset:auto;grid-template-columns:minmax(0,1fr);gap:10px;margin:74px 10px 42px 66px}.street-column{min-height:0}.street-map-column{height:640px}.street-map-frame{height:250px;min-height:250px}.street-results{overflow:hidden}.street-view-column{height:650px;padding:11px}.street-view-frame{min-height:300px}.street-image-details{max-height:185px}.street-live-footer{position:relative;right:auto;bottom:auto;margin:0 10px 12px 66px;text-align:center;font-size:8px}.street-result-list{max-height:250px}}
 @media(prefers-reduced-motion:reduce){.street-column *{scroll-behavior:auto!important}}
+
+/* GeoSathi AI detection — self-contained Mapillary panel, no edits to 3D canvas */
+.geosathi-ai-wrap{position:absolute;z-index:15;right:12px;top:12px;display:flex;align-items:flex-end;flex-direction:column;gap:7px;pointer-events:none;max-width:calc(100% - 24px)}
+.geosathi-ai-toggle,.geosathi-ai-inspector{pointer-events:auto}
+.geosathi-ai-toggle{display:flex;align-items:center;gap:6px;border:1px solid #ffffff75;border-radius:999px;background:#202321eb;color:#fff;padding:9px 12px;box-shadow:0 4px 15px #0005;font:600 11px/1.2 system-ui;cursor:pointer}
+.geosathi-ai-toggle.is-on{border-color:#ffd84d;color:#ffd84d}
+.geosathi-ai-toggle span{font-size:9px;opacity:.8}
+.geosathi-ai-inspector{width:min(460px,calc(100vw - 110px));max-height:min(70dvh,570px);overflow:auto;border:1px solid #fff8;border-radius:13px;background:#171c1ff4;color:#f5f4ef;box-shadow:0 8px 40px #0009;padding:10px;display:grid;gap:8px}
+.geosathi-ai-head{display:flex;align-items:center;justify-content:space-between;font:600 12px system-ui}
+.geosathi-ai-head button{border:0;background:transparent;color:inherit;cursor:pointer}
+.geosathi-ai-inspector p{margin:0;font:11px/1.45 system-ui}
+.geosathi-ai-error{color:#ffb5a3}
+.geosathi-ai-overlay-image{display:block;width:100%;height:auto;max-height:40dvh;object-fit:contain;border-radius:7px}
+.geosathi-ai-classes{display:flex;flex-wrap:wrap;gap:5px}
+.geosathi-ai-classes span{padding:4px 7px;border-radius:5px;background:#323b42;font:10px system-ui}
+.geosathi-ai-note{color:#c8cbc9}
+@media(max-width:800px){.geosathi-ai-wrap{top:8px;right:8px}.geosathi-ai-inspector{max-height:51dvh;width:min(320px,calc(100vw - 100px))}}

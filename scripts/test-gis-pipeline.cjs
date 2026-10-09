@@ -12,7 +12,8 @@ function load(relative) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const localRequire = name => name === 'next/server' ? { NextResponse: { json: Response.json } } :
-    name.startsWith('@/') ? load(`src/${name.slice(2)}.ts`) : require(name);
+    name.startsWith('@/') ? load(`src/${name.slice(2)}.ts`) :
+    name.startsWith('.') ? load(path.relative(root,path.resolve(root,path.dirname(relative),path.extname(name)?name:`${name}.ts`))) : require(name);
   new Function('require', 'exports', code)(localRequire, exports);
   cache.set(relative, exports);
   return exports;

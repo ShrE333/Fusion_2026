@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Crosshair, MapPin, RefreshCw, Search } from "lucide-react";
 import { StreetImageryMap } from "@/components/map/street-imagery-map";
 import { MapillaryViewer } from "@/components/street-view/mapillary-viewer";
+import { StreetSegmentationOverlay } from "@/components/street-view/street-segmentation-overlay";
 import { AtlasNav } from "@/components/shell/atlas-nav";
 import { useAtlasLocation } from "@/components/shell/location-context";
 import { MapillarySearchError, searchMapillaryImages, type MapillaryImage } from "@/lib/api/mapillary";
@@ -162,6 +163,7 @@ export default function StreetViewPage() {
       <div className="street-column street-view-column">
         <div className="street-view-heading"><div><p>STREET-LEVEL VIEWER</p><h2>{selectedId ? `Image ${activeImageId ?? selectedId}` : "Select an imagery point"}</h2></div><span>{selectedId ? "PROVIDER IMAGE" : "WAITING FOR SELECTION"}</span></div>
         <div className="street-view-frame">
+          {selectedId && config.mapillaryAccessToken && <StreetSegmentationOverlay imageId={activeImageId ?? selectedId} />}
           {selectedId && config.mapillaryAccessToken ? <MapillaryViewer key={selectedId} accessToken={config.mapillaryAccessToken} imageId={selectedId} onLoaded={setActiveImageId} onFailure={() => setMessage("The selected image ID was returned by Mapillary, but the viewer could not load it. Choose another result or retry coverage.")} /> : <div className="street-demo-fallback">
             <div className="pano-sky" /><div className="pano-buildings" /><div className="pano-road" />
             <span>DEMO PANORAMA — NOT VERIFIED AT THIS LOCATION</span>
