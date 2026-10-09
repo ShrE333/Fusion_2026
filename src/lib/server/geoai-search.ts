@@ -22,7 +22,9 @@ const PLACE_TYPES: Array<[string, string[]]> = [
   ["school", ["school", "स्कूल", "शाळा"]],
   ["college", ["college", "महाविद्यालय"]],
   ["temple", ["temple", "मंदिर"]],
-  ["restaurant", ["restaurant", "रेस्तरां", "रेस्टॉरंट"]],
+  ["restaurant", ["restaurant", "restaurants", "रेस्तरां", "रेस्टॉरंट"]],
+  ["hotel", ["hotel", "hotels", "guesthouse", "guest house", "lodging", "accommodation", "होटल", "हॉटेल", "लॉज"]],
+  ["cafe", ["cafe", "cafes", "café", "cafés", "coffee shop", "coffee shops", "coffee", "कैफे", "कॅफे", "कॉफी"]],
   ["library", ["library", "पुस्तकालय", "ग्रंथालय"]],
   ["market", ["market", "marketplace", "बाज़ार", "बाजार"]],
   ["shop", ["shop", "दुकान"]],
@@ -95,6 +97,8 @@ function hasSubtype(f:OsmFeature, subtype:string|null):boolean {
   if (subtype==="college") return amenity==="college" || amenity==="university" || /college|university/.test(name);
   if (subtype==="temple") return (amenity==="place_of_worship" && prop(p,"religion")==="hindu") || /temple|मंदिर/.test(name);
   if (subtype==="restaurant") return amenity==="restaurant" || /restaurant|रेस्तरां/.test(name);
+  if (subtype==="hotel") return ["hotel", "motel", "hostel", "guest_house", "apartment", "chalet"].includes(prop(p,"tourism")) || amenity==="hotel" || /hotel|guest.?house|होटल|हॉटेल/.test(name);
+  if (subtype==="cafe") return amenity==="cafe" || amenity==="coffee_shop" || prop(p,"shop")==="coffee" || /cafe|café|coffee|कैफे|कॅफे/.test(name);
   if (subtype==="library") return amenity==="library" || /library|ग्रंथालय/.test(name);
   if (subtype==="market") return amenity==="marketplace" || /market|bazaar|bazar/.test(name);
   if (subtype==="shop") return Boolean(prop(p,"shop")) || /shop|store/.test(name);
@@ -107,7 +111,7 @@ function matchesSurface(f:OsmFeature, q:string):boolean {
 }
 function readableName(f:OsmFeature,layer:Layer,index:number):string {
   const p=f.properties||{};
-  for (const k of ["name","name:en","amenity","highway","building","place"]) if (typeof p[k]==="string" && String(p[k]).trim()) return String(p[k]);
+  for (const k of ["name","name:en","amenity","tourism","shop","highway","building","place"]) if (typeof p[k]==="string" && String(p[k]).trim()) return String(p[k]);
   return `${layer.slice(0,-1)} ${index+1}`;
 }
 function distanceSquared(b:BBox,c:Center):number {const x=(b[0]+b[2])/2-c.lon,y=(b[1]+b[3])/2-c.lat;return (x*Math.cos(c.lat*Math.PI/180))**2+y*y;}

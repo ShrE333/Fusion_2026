@@ -114,7 +114,7 @@ function InspectionWorkspace(){
           <AtlasMap
             features={results} visible={{search:true,hazard:false,infrastructure:false}}
             selected={selected} onSelect={feature=>{const match=results.find(r=>r.id===feature.id);if(match)setSelected(match);}}
-            initialView={{center:location,zoom:14}} cameraTarget={cameraTarget}
+            initialView={{center:location,zoom:14}} cameraTarget={cameraTarget} userLocation={{coordinates:location,label:"Shared search location"}}
           />
           <div className="inspect-map-caption"><Satellite size={13}/> Street/Satellite toggle at top right (MapTiler key required for satellite). Colored filled areas are GIS/OSM footprints.</div>
         </section>
