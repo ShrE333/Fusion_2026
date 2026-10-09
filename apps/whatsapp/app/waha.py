@@ -1,3 +1,5 @@
+import base64
+import mimetypes
 from pathlib import Path
 from urllib.parse import urlparse
 import httpx
@@ -5,7 +7,6 @@ from .config import settings
 
 
 def require_private_chat(chat_id: str) -> None:
-    """Fail closed before ANY WAHA outbound sendText/sendList HTTP request."""
     if not isinstance(chat_id, str) or not chat_id.endswith(("@c.us", "@s.whatsapp.net", "@lid")):
         raise ValueError("Blocked WAHA send: destination is not a private WhatsApp chat")
 
@@ -20,6 +21,33 @@ async def send_text(session: str, chat_id: str, message: str):
         response=await client.post(
             f'{settings.waha_url.rstrip("/")}/api/sendText',
             json={'session':session,'chatId':chat_id,'text':message},
+            headers=headers(),
+        )
+        response.raise_for_status()
+
+
+async def send_image(session: str, chat_id: str, image_path, caption: str = ""):
+    require_private_chat(chat_id)
+    path=Path(image_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Outbound image not found: {path}")
+    if path.stat().st_size > settings.max_image_bytes:
+        raise ValueError("Outbound image exceeds configured size limit")
+    mime=mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    payload={
+        'session':session,
+        'chatId':chat_id,
+        'file':{
+            'mimetype':mime,
+            'filename':path.name,
+            'data':base64.b64encode(path.read_bytes()).decode('ascii'),
+        },
+        'caption':caption,
+    }
+    async with httpx.AsyncClient(timeout=45) as client:
+        response=await client.post(
+            f'{settings.waha_url.rstrip("/")}/api/sendImage',
+            json=payload,
             headers=headers(),
         )
         response.raise_for_status()
@@ -58,8 +86,7 @@ _MENU_COPY = {
 
 async def send_menu(session: str, chat_id: str, fallback_text: str, language: str = "en"):
     require_private_chat(chat_id)
-    copy = _MENU_COPY.get(language, _MENU_COPY["en"])
-    # sendList may be unavailable with some WAHA engines/editions. Always preserve fallback.
+    copy=_MENU_COPY.get(language,_MENU_COPY["en"])
     data={
         'session':session,
         'chatId':chat_id,

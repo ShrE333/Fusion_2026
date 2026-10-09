@@ -6,12 +6,13 @@ import uuid
 from pathlib import Path
 
 import httpx
+from PIL import Image, ImageDraw
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 
 from . import store
 from .config import settings
 from .i18n import normalize_language, t
-from .waha import download_image, send_menu, send_text
+from .waha import download_image, send_image, send_menu, send_text
 
 logging.basicConfig(level=logging.INFO)
 log=logging.getLogger('fusion.whatsapp')
@@ -144,6 +145,51 @@ def _latency_text(result):
     return f'{float(latency):.0f} ms' if isinstance(latency,(int,float)) else 'n/a'
 
 
+def _annotate_road_image(image_path, detections, report_id):
+    path=Path(image_path)
+    if not path.is_file() or not detections:
+        return None
+    output=path.with_name(f"{path.stem}_{report_id}_detected.jpg")
+    with Image.open(path) as source:
+        image=source.convert("RGB")
+        draw=ImageDraw.Draw(image)
+        width,height=image.size
+        line_width=max(3,round(min(width,height)*0.006))
+        valid=0
+        for detection in detections:
+            if not isinstance(detection,dict):
+                continue
+            bbox=detection.get("bbox")
+            if not isinstance(bbox,dict):
+                continue
+            try:
+                x1=max(0,min(width-1,int(round(float(bbox["x1"])))))
+                y1=max(0,min(height-1,int(round(float(bbox["y1"])))))
+                x2=max(0,min(width-1,int(round(float(bbox["x2"])))))
+                y2=max(0,min(height-1,int(round(float(bbox["y2"])))))
+            except (KeyError,TypeError,ValueError):
+                continue
+            if x2<=x1 or y2<=y1:
+                continue
+            confidence=detection.get("confidence")
+            if isinstance(confidence,(int,float)):
+                pct=float(confidence)*100 if 0<=confidence<=1 else float(confidence)
+                label=f"pothole {pct:.1f}%"
+            else:
+                label="pothole"
+            draw.rectangle((x1,y1,x2,y2),outline=(230,40,40),width=line_width)
+            box=draw.textbbox((0,0),label)
+            tw,th=box[2]-box[0],box[3]-box[1]
+            ly=max(0,y1-th-8)
+            draw.rectangle((x1,ly,min(width-1,x1+tw+8),min(height-1,ly+th+8)),fill=(255,255,255))
+            draw.text((x1+4,ly+4),label,fill=(190,20,20))
+            valid+=1
+        if not valid:
+            return None
+        image.save(output,"JPEG",quality=92,optimize=True)
+    return output
+
+
 async def finish_report(session, chat, report_id, image, loc, language='en'):
     lat=float(loc['lat'])
     lon=float(loc['lon'])
@@ -170,36 +216,30 @@ async def finish_report(session, chat, report_id, image, loc, language='en'):
         if potholes_count > 0:
             status='ai_detected_pending_verification'
             store.save_report(report_id,chat,lat,lon,str(image),status,result or {})
+            try:
+                annotated=_annotate_road_image(image,detections,report_id)
+                if annotated:
+                    await send_image(
+                        session,chat,annotated,
+                        t(language,'road_annotated_caption',report_id=report_id,count=potholes_count),
+                    )
+            except Exception:
+                log.exception('Could not send annotated road image for %s',report_id)
             await send_text(
-                session,
-                chat,
-                t(
-                    language,
-                    'road_detected',
-                    report_id=report_id,
-                    count=potholes_count,
-                    confidence=_confidence_text(detections),
-                    latency=_latency_text(result or {}),
-                    lat=lat,
-                    lon=lon,
-                    map_url=map_url,
-                ),
+                session,chat,
+                t(language,'road_detected',report_id=report_id,count=potholes_count,
+                  confidence=_confidence_text(detections),latency=_latency_text(result or {}),
+                  lat=lat,lon=lon,map_url=map_url),
             )
+            await send_menu(session,chat,t(language,'menu'),language)
         else:
             status='no_detection_pending_review'
             store.save_report(report_id,chat,lat,lon,str(image),status,result or {})
             await send_text(
-                session,
-                chat,
-                t(
-                    language,
-                    'road_no_detection',
-                    report_id=report_id,
-                    lat=lat,
-                    lon=lon,
-                    map_url=map_url,
-                ),
+                session,chat,
+                t(language,'road_no_detection',report_id=report_id,lat=lat,lon=lon,map_url=map_url),
             )
+            await send_menu(session,chat,t(language,'menu'),language)
     except Exception:
         log.exception('Road inference failed for %s',report_id)
         store.save_report(report_id,chat,lat,lon,str(image),'inference_failed',{})
@@ -220,37 +260,34 @@ async def finish_report(session, chat, report_id, image, loc, language='en'):
 async def finish_search(session,chat,search_id,query,loc,language='en'):
     try:
         if settings.infra_search_url:
-            result=await call_worker(
-                settings.infra_search_url,
-                {'query_id':search_id,'query':query,'location':loc},
-            )
+            result=await call_worker(settings.infra_search_url,{'query_id':search_id,'query':query,'location':loc})
             candidates=(result or {}).get('results') or []
             status=(result or {}).get('status','completed')
             store.save_search(search_id,chat,query,loc,status,result or {})
-
             if candidates:
                 top=candidates[0]
                 center=top.get('center') or {}
                 lat=float(center.get('lat',loc['lat']))
                 lon=float(center.get('lon',loc['lon']))
-                score=top.get('similarity')
-                score_text=f'{float(score):.3f}' if isinstance(score,(int,float)) else 'n/a'
-                await send_text(
-                    session,
-                    chat,
-                    t(
-                        language,
-                        'search_found',
-                        search_id=search_id,
-                        count=len(candidates),
-                        lat=lat,
-                        lon=lon,
-                        score=score_text,
-                        map_url=_map_url(lat,lon,17),
-                    ),
-                )
+                if (result or {}).get('gis_verified') or top.get('gis_verified'):
+                    await send_text(
+                        session,chat,
+                        t(language,'search_gis_found',search_id=search_id,count=len(candidates),
+                          layer=str((result or {}).get('gis_layer') or top.get('gis_layer') or 'GIS'),
+                          name=str(top.get('name') or 'Unnamed feature'),
+                          lat=lat,lon=lon,map_url=_map_url(lat,lon,17)),
+                    )
+                else:
+                    score=top.get('similarity')
+                    score_text=f'{float(score):.3f}' if isinstance(score,(int,float)) else 'n/a'
+                    await send_text(
+                        session,chat,
+                        t(language,'search_found',search_id=search_id,count=len(candidates),
+                          lat=lat,lon=lon,score=score_text,map_url=_map_url(lat,lon,17)),
+                    )
             else:
                 await send_text(session,chat,t(language,'search_none',search_id=search_id))
+            await send_menu(session,chat,t(language,'menu'),language)
         else:
             store.save_search(search_id,chat,query,loc,'pending_index',{})
             await send_text(session,chat,t(language,'search_saved',search_id=search_id))
