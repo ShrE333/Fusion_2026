@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { config } from "@/lib/config";
+import { configureMapLibreWorker } from "@/lib/map/worker";
 import type { MapillaryImage } from "@/lib/api/mapillary";
 
 type Props = {
@@ -36,6 +37,7 @@ export function StreetImageryMap({ center, actualLocation, images, selectedId, o
 
   useEffect(() => {
     if (!container.current || map.current) return;
+    configureMapLibreWorker();
     const instance = new maplibregl.Map({
       container: container.current,
       center: centerRef.current,

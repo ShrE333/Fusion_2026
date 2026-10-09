@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Crosshair, Database, Download, Eye, Map, Search, X } from "lucide-react";
 import { AtlasMap, type CameraTarget } from "@/components/map/atlas-map";
 import { AtlasNav } from "@/components/shell/atlas-nav";
@@ -32,7 +32,7 @@ export default function Home() {
       const coordinates: [number, number] = [position.coords.longitude, position.coords.latitude];
       const nextCameraId = Date.now();
       setLocation({ coordinates, accuracy: position.coords.accuracy, timestamp: position.timestamp });
-      setCameraId(nextCameraId); setCameraTarget({ id: nextCameraId, coordinates, zoom: 13 }); setLocationState("captured"); setLocationLabel("YOUR CURRENT LOCATION"); setMapContext("");
+      setSelected(undefined); setCameraId(nextCameraId); setCameraTarget({ id: nextCameraId, coordinates, zoom: 13 }); setLocationState("captured"); setLocationLabel("BROWSER-REPORTED LOCATION"); setMapContext("Desktop location may be approximate; accuracy is reported by your browser.");
       setLocationDetail(`${coordinates[1].toFixed(5)}° N · ${coordinates[0].toFixed(5)}° E · ±${Math.round(position.coords.accuracy)} m · ${new Date(position.timestamp).toLocaleTimeString()} · locality unavailable`);
     }, (reason) => {
       if (locationId !== locationRequestId.current) return;
@@ -40,14 +40,6 @@ export default function Home() {
       setError(reason.code === 1 ? "Location permission was denied. The map has not moved." : reason.code === 3 ? "Location request timed out. Check your device signal and retry. The map has not moved." : "Your position is unavailable. The map has not moved; you can retry or return to Pune.");
     }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
   }, [setLocation]);
-  const hadInitialLocation = useRef(Boolean(location));
-  useEffect(() => {
-    // User requested location on entering the workspace. The browser controls permission.
-    // Do not immediately undo an explicit "Back to Pune" action.
-    if (hadInitialLocation.current) return;
-    const timer = window.setTimeout(() => locateMe(), 0);
-    return () => window.clearTimeout(timer);
-  }, [locateMe]);
 
   const resetToPune = () => {
     locationRequestId.current++;

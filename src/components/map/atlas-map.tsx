@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { config } from "@/lib/config";
+import { configureMapLibreWorker } from "@/lib/map/worker";
 import type { Bounds, GeoJsonCollection } from "@/lib/api/geosathi";
 import type { AtlasFeature } from "@/types/geo";
 
@@ -17,17 +18,19 @@ const sourceId = (kind: AtlasFeature["kind"]) => `atlas-${kind}`;
 const layerId = (kind: AtlasFeature["kind"]) => `${sourceId(kind)}-visual`;
 const satelliteSourceId = "atlas-satellite";
 const satelliteLayerId = "atlas-satellite-raster";
-const satelliteTileTemplate = (key: string) => `https://api.maptiler.com/tiles/satellite-v2/{z}/{x}/{y}.jpg?key=${key}`;
+const satelliteTileJson = (key: string) => `https://api.maptiler.com/tiles/satellite-v4/tiles.json?${new URLSearchParams({key})}`;
 
 function gpsAccuracyPolygon(coords: [number,number], accuracy: number): GeoJSON.Polygon {
-  const metres=Math.min(50000, Math.max(1, accuracy));
-  const lonScale=1/(111320*Math.max(0.1,Math.cos(coords[1]*Math.PI/180)));
-  const latScale=1/111320;
+  const radius=Math.max(0,accuracy)/6371008.8;
+  const latitude=coords[1]*Math.PI/180, longitude=coords[0]*Math.PI/180;
   const ring: [number,number][]=[];
-  for(let i=0;i<=64;i++) {
+  for(let i=0;i<64;i++) {
     const a=2*Math.PI*i/64;
-    ring.push([coords[0]+Math.cos(a)*metres*lonScale, coords[1]+Math.sin(a)*metres*latScale]);
+    const lat=Math.asin(Math.sin(latitude)*Math.cos(radius)+Math.cos(latitude)*Math.sin(radius)*Math.cos(a));
+    const lon=longitude+Math.atan2(Math.sin(a)*Math.sin(radius)*Math.cos(latitude),Math.cos(radius)-Math.sin(latitude)*Math.sin(lat));
+    ring.push([((lon*180/Math.PI+540)%360)-180,lat*180/Math.PI]);
   }
+  ring.push([...ring[0]]);
   return {type:"Polygon",coordinates:[ring]};
 }
 function featureCollection(features: AtlasFeature[], kind: AtlasFeature["kind"], isVisible: boolean): GeoJSON.FeatureCollection {
@@ -64,6 +67,7 @@ function isSatelliteResourceError(event: unknown, tileOrigin: string) {
 
 export function AtlasMap({ features, visible, selected, onSelect, cameraTarget, initialView, opacity, liveLayers = [], onBoundsChange, userLocation }: Props) {
   const container = useRef<HTMLDivElement>(null); const map = useRef<MapLibreMap | null>(null);
+  const positionMarker = useRef<maplibregl.Marker | null>(null);
   const initialViewRef = useRef(initialView);
   const featureLookup = useRef<AtlasFeature[]>(features); const onSelectRef = useRef(onSelect);
   const liveLayersRef = useRef(liveLayers); const onBoundsChangeRef = useRef(onBoundsChange); const userLocationRef = useRef(userLocation);
@@ -74,11 +78,12 @@ export function AtlasMap({ features, visible, selected, onSelect, cameraTarget, 
   useEffect(() => { basemapRef.current = basemap; }, [basemap]);
   useEffect(() => {
     if (!container.current || map.current) return;
+    configureMapLibreWorker();
     const initial = initialViewRef.current;
     const instance = new maplibregl.Map({ container: container.current, center: initial?.center ?? [73.8567, 18.5204], zoom: initial?.zoom ?? 12.2, style: { version: 8, sources: { osm: { type: "raster", tiles: [config.osmTileUrl], tileSize: 256, attribution: "© <a href='https://www.openstreetmap.org/copyright' target='_blank' rel='noreferrer'>OpenStreetMap contributors</a>" } }, layers: [{ id: "osm", type: "raster", source: "osm" }] } });
     instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
-    const satelliteOrigin = config.mapTilerApiKey ? new URL(satelliteTileTemplate(config.mapTilerApiKey)).origin : "";
-    instance.on("error", (event) => { if (basemapRef.current === "satellite" && satelliteOrigin && !satelliteErrorReported.current && isSatelliteResourceError(event, satelliteOrigin)) { satelliteErrorReported.current = true; setSatelliteError("Satellite tiles could not load. Check the MapTiler API key, its allowed origins, and tile requests; Street restored."); setBasemap("street"); } });
+    const satelliteOrigin = config.mapTilerApiKey ? "https://api.maptiler.com" : "";
+    instance.on("error", (event) => { if (basemapRef.current === "satellite" && satelliteOrigin && !satelliteErrorReported.current && isSatelliteResourceError(event, satelliteOrigin)) { satelliteErrorReported.current = true; setSatelliteError("Satellite could not load. Check that the MapTiler browser key allows this domain and satellite-v4 access, then retry Satellite. Street remains available."); } });
     instance.on("load", () => {
       groups.forEach((kind) => {
         instance.addSource(sourceId(kind), { type: "geojson", data: featureCollection([], kind, false) });
@@ -116,7 +121,7 @@ export function AtlasMap({ features, visible, selected, onSelect, cameraTarget, 
     instance.on("moveend", notifyBounds); instance.once("load", notifyBounds);
     const resizeObserver = new ResizeObserver(() => instance.resize());
     resizeObserver.observe(container.current);
-    map.current = instance; return () => { resizeObserver.disconnect(); instance.off("moveend", notifyBounds); instance.remove(); map.current = null; };
+    map.current = instance; return () => { positionMarker.current?.remove(); positionMarker.current=null; resizeObserver.disconnect(); instance.off("moveend", notifyBounds); instance.remove(); map.current = null; };
   }, []);
   useEffect(() => {
     const instance=map.current;
@@ -125,7 +130,7 @@ export function AtlasMap({ features, visible, selected, onSelect, cameraTarget, 
       if(!instance.getLayer("osm") || !instance.getLayer(layerId("search"))) return;
       if(config.mapTilerApiKey) {
         if(!instance.getSource(satelliteSourceId)) instance.addSource(satelliteSourceId,{
-          type:"raster",tiles:[satelliteTileTemplate(config.mapTilerApiKey)],tileSize:256,maxzoom:20,
+          type:"raster",url:satelliteTileJson(config.mapTilerApiKey),tileSize:256,
           attribution:"© <a href='https://www.maptiler.com/copyright/' target='_blank' rel='noreferrer'>MapTiler</a> © contributors"
         });
         if(!instance.getLayer(satelliteLayerId)) instance.addLayer({id:satelliteLayerId,type:"raster",source:satelliteSourceId,layout:{visibility:"none"}},layerId("search"));
@@ -137,6 +142,21 @@ export function AtlasMap({ features, visible, selected, onSelect, cameraTarget, 
     if(instance.isStyleLoaded() && instance.getLayer(layerId("search")))syncSatellite();else instance.once("load",syncSatellite);
     return ()=>{instance.off("load",syncSatellite);};
   },[basemap]);
+  useEffect(() => {
+    const instance=map.current;
+    if(!instance)return;
+    if(!userLocation){positionMarker.current?.remove();positionMarker.current=null;return;}
+    const element=document.createElement("div");
+    element.setAttribute("role","img");
+    element.setAttribute("aria-label",userLocation.label||"Browser-reported position");
+    element.style.cssText="width:22px;height:22px;border-radius:50%;background:#1672ee;border:4px solid white;box-shadow:0 0 0 8px #2388f540,0 2px 10px #0008;cursor:pointer";
+    const popup=document.createElement("div");
+    popup.textContent=`${userLocation.label||"Browser-reported position"}: ${userLocation.coordinates[1].toFixed(6)}, ${userLocation.coordinates[0].toFixed(6)}${Number.isFinite(userLocation.accuracy)?` · reported accuracy ±${Math.round(userLocation.accuracy!)} m`:""}. Desktop positioning may be approximate.`;
+    positionMarker.current?.remove();
+    positionMarker.current=new maplibregl.Marker({element,anchor:"center"})
+      .setLngLat(userLocation.coordinates)
+      .setPopup(new maplibregl.Popup({offset:20}).setDOMContent(popup)).addTo(instance);
+  },[userLocation]);
   useEffect(() => {
     const instance=map.current;
     if(!instance)return;
