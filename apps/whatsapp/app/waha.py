@@ -38,9 +38,9 @@ async def send_image(session:str,chat_id:str,image_path,caption:str=""):
         r.raise_for_status()
 
 _MENU_COPY={
-    "en":("Choose GeoSathi service or language","Choose option","Infrastructure Search","Search GIS and imagery","Road Damage Report","Send road photo and location"),
-    "hi":("GeoSathi सेवा या भाषा चुनें","विकल्प चुनें","इन्फ्रास्ट्रक्चर खोज","GIS और imagery खोजें","सड़क क्षति रिपोर्ट","सड़क की फोटो और GPS pin भेजें"),
-    "mr":("GeoSathi सेवा किंवा भाषा निवडा","पर्याय निवडा","पायाभूत सुविधा शोध","GIS आणि imagery शोधा","रस्ता नुकसान अहवाल","रस्त्याचा फोटो आणि GPS pin पाठवा"),
+    "en":("What would you like to do?","Choose option","Infrastructure Search","Search GIS and imagery","Road Damage Report","Send road photo and location"),
+    "hi":("आप क्या करना चाहते हैं?","विकल्प चुनें","इन्फ्रास्ट्रक्चर खोज","GIS और imagery खोजें","सड़क क्षति रिपोर्ट","सड़क की फोटो और GPS pin भेजें"),
+    "mr":("तुम्हाला काय करायचे आहे?","पर्याय निवडा","पायाभूत सुविधा शोध","GIS आणि imagery शोधा","रस्ता नुकसान अहवाल","रस्त्याचा फोटो आणि GPS pin पाठवा"),
 }
 _LANGUAGE_ROWS=[
     {"title":"English","rowId":"language_en","description":"GeoSathi in English"},

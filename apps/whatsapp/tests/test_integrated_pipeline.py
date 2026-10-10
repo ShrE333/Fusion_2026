@@ -53,7 +53,10 @@ async def test_search_passes_text_and_gps_then_delivers_link_and_recurring_menu(
     assert calls[0]['query'] == 'hospital near me'
     assert calls[0]['location'] == loc
     assert any('/inspect?' in message and 'feature_id=osm%3Aplaces%3A42' in message for message in messages)
-    assert len(menus) == 1 and menus[0][-1] == 'hi'
+    assert not menus
+    assert len(messages) == 1
+    assert messages[0].count('/inspect?') == 1
+    assert 'SEARCH-1' not in messages[0]
 
 
 @pytest.mark.asyncio
@@ -73,5 +76,5 @@ async def test_pothole_detection_delivers_annotated_image_and_recurring_menu(mon
     monkeypatch.setattr(main.store, 'save_report', lambda *args: saved.append(args))
     await main.finish_report('s', '1@c.us', 'REPORT-1', image, {'lat':18.52,'lon':73.85}, 'mr')
     assert len(sent) == 1 and sent[0][2].is_file()
-    assert len(menus) == 1 and menus[0][-1] == 'mr'
+    assert not menus
     assert saved

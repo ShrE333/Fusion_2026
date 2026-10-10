@@ -14,6 +14,7 @@ from .config import settings
 from .i18n import normalize_language, t
 from .waha import download_image, send_image, send_language_menu, send_menu, send_text
 from .geo_links import inspect_url
+from .whatsapp_copy import part, progress_message, road_message, search_message
 
 logging.basicConfig(level=logging.INFO)
 log=logging.getLogger('fusion.whatsapp')
@@ -199,120 +200,87 @@ async def _safe_send_menu(session,chat,language):
 
 
 async def finish_report(session, chat, report_id, image, loc, language='en'):
-    lat=float(loc['lat'])
-    lon=float(loc['lon'])
-    map_url=_map_url(lat,lon)
+    """Persist each road report, then deliver one summary (and optional annotated image)."""
+    lat, lon = float(loc['lat']), float(loc['lon'])
+    map_url = inspect_url(lat, lon, 'roads nearby')
+    summary_state = 'unavailable'
+    potholes_count = 0
+    annotated = None
 
     if not settings.road_inference_url:
-        store.save_report(report_id,chat,lat,lon,str(image),'pending_inference',{})
-        await send_text(
-            session,
-            chat,
-            t(language,'road_not_configured',report_id=report_id,lat=lat,lon=lon),
-        )
-        await _safe_send_menu(session,chat,language)
-        return
-
-    try:
-        result=await call_road_detector(image)
-        detections=(result or {}).get('detections') or []
-        raw_count=(result or {}).get('potholes_count',len(detections))
+        store.save_report(report_id, chat, lat, lon, str(image), 'pending_inference', {})
+    else:
         try:
-            potholes_count=max(0,int(raw_count))
-        except (TypeError,ValueError):
-            potholes_count=len(detections)
-
-        if potholes_count > 0:
-            status='ai_detected_pending_verification'
-            store.save_report(report_id,chat,lat,lon,str(image),status,result or {})
+            result = await call_road_detector(image)
+            detections = (result or {}).get('detections') or []
+            raw_count = (result or {}).get('potholes_count', len(detections))
             try:
-                annotated=_annotate_road_image(image,detections,report_id)
-                if annotated:
-                    await send_image(
-                        session,chat,annotated,
-                        t(language,'road_annotated_caption',report_id=report_id,count=potholes_count),
-                    )
-            except Exception:
-                log.exception('Could not send annotated road image for %s',report_id)
-            await send_text(
-                session,chat,
-                t(language,'road_detected',report_id=report_id,count=potholes_count,
-                  confidence=_confidence_text(detections),latency=_latency_text(result or {}),
-                  lat=lat,lon=lon,map_url=map_url),
-            )
-            await send_text(session,chat,"📍 Mobile map + street imagery:\n"+inspect_url(lat,lon,'roads nearby'))
-            await _safe_send_menu(session,chat,language)
-        else:
-            status='no_detection_pending_review'
-            store.save_report(report_id,chat,lat,lon,str(image),status,result or {})
-            await send_text(
-                session,chat,
-                t(language,'road_no_detection',report_id=report_id,lat=lat,lon=lon,map_url=map_url),
-            )
-            await send_text(session,chat,"📍 Mobile map + street imagery:\n"+inspect_url(lat,lon,'roads nearby'))
-            await _safe_send_menu(session,chat,language)
-    except Exception:
-        log.exception('Road inference failed for %s',report_id)
-        store.save_report(report_id,chat,lat,lon,str(image),'inference_failed',{})
-        await send_text(
-            session,
-            chat,
-            t(
-                language,
-                'road_failed',
-                report_id=report_id,
-                lat=lat,
-                lon=lon,
-                map_url=map_url,
-            ),
-        )
-        await _safe_send_menu(session,chat,language)
-
-
-async def finish_search(session,chat,search_id,query,loc,language='en'):
-    try:
-        if settings.infra_search_url:
-            result=await call_worker(settings.infra_search_url,{'query_id':search_id,'query':query,'location':loc})
-            candidates=(result or {}).get('results') or []
-            status=(result or {}).get('status','completed')
-            store.save_search(search_id,chat,query,loc,status,result or {})
-            if candidates:
-                top=candidates[0]
-                center=top.get('center') or {}
-                lat=float(center.get('lat',loc['lat']))
-                lon=float(center.get('lon',loc['lon']))
-                if (result or {}).get('gis_verified') or top.get('gis_verified'):
-                    await send_text(
-                        session,chat,
-                        t(language,'search_gis_found',search_id=search_id,count=len(candidates),
-                          layer=str((result or {}).get('gis_layer') or top.get('gis_layer') or 'GIS'),
-                          name=str(top.get('name') or 'Unnamed feature'),
-                          lat=lat,lon=lon,map_url=inspect_url(loc['lat'],loc['lon'],query,str(top.get('id','')))),
-                    )
-                else:
-                    score=top.get('similarity')
-                    score_text=f'{float(score):.3f}' if isinstance(score,(int,float)) else 'n/a'
-                    await send_text(
-                        session,chat,
-                        t(language,'search_found',search_id=search_id,count=len(candidates),
-                          lat=lat,lon=lon,score=score_text,map_url=inspect_url(loc['lat'],loc['lon'],query,str(top.get('id','')))),
-                    )
+                potholes_count = max(0, int(raw_count))
+            except (ValueError, TypeError):
+                potholes_count = len(detections)
+            if potholes_count:
+                summary_state = 'detected'
+                store.save_report(report_id, chat, lat, lon, str(image),
+                                  'ai_detected_pending_verification', result or {})
+                try:
+                    annotated = _annotate_road_image(image, detections, report_id)
+                except Exception:
+                    log.exception('Could not annotate road image for %s', report_id)
             else:
-                await send_text(session,chat,t(language,'search_none',search_id=search_id))
-            feature_id=str(candidates[0].get('id','')) if candidates and isinstance(candidates[0],dict) else ''
-            interactive=inspect_url(loc['lat'],loc['lon'],query,feature_id)
-            await send_text(session,chat,"🗺️ View GIS footprints / imagery tile bounds + satellite + mobile street imagery:\n"+interactive+"\nStreet view: "+interactive+"#street")
-            await _safe_send_menu(session,chat,language)
-        else:
-            store.save_search(search_id,chat,query,loc,'pending_index',{})
-            await send_text(session,chat,t(language,'search_saved',search_id=search_id))
-            await send_text(session,chat,inspect_url(loc['lat'],loc['lon'],query))
-            await _safe_send_menu(session,chat,language)
-    except Exception:
-        log.exception('Search failed %s',search_id)
-        store.save_search(search_id,chat,query,loc,'failed',{})
-        await send_text(session,chat,t(language,'search_failed',search_id=search_id))
-        await _safe_send_menu(session,chat,language)
+                summary_state = 'zero'
+                store.save_report(report_id, chat, lat, lon, str(image),
+                                  'no_detection_pending_review', result or {})
+        except Exception:
+            log.exception('Road inference failed for %s', report_id)
+            store.save_report(report_id, chat, lat, lon, str(image), 'inference_failed', {})
+            summary_state = 'error'
+
+    # An image preview is useful; a second text link and a recurring service menu are not.
+    if annotated:
+        try:
+            await send_image(session, chat, annotated, part(language, 'annotated'))
+        except Exception:
+            log.exception('Could not send annotated road photo for %s', report_id)
+    await send_text(session, chat, road_message(language, summary_state,
+                                               count=potholes_count, map_url=map_url))
+
+
+async def finish_search(session, chat, search_id, query, loc, language='en'):
+    """One final search message; preserve raw GIS provenance in the existing DB."""
+    mode = 'unavailable'
+    count = 0
+    layer = ''
+    name = ''
+    map_url = ''
+    if settings.infra_search_url:
+        try:
+            result = await call_worker(settings.infra_search_url, {
+                'query_id': search_id, 'query': query, 'location': loc,
+            })
+            candidates = (result or {}).get('results') or []
+            if not isinstance(candidates, list):
+                raise ValueError('Invalid search response')
+            status = (result or {}).get('status', 'completed')
+            store.save_search(search_id, chat, query, loc, status, result or {})
+            if candidates:
+                top = candidates[0] if isinstance(candidates[0], dict) else {}
+                count = len(candidates)
+                layer = str((result or {}).get('gis_layer') or top.get('gis_layer') or 'map')
+                name = str(top.get('name') or top.get('title') or layer)
+                mode = ('gis' if (result or {}).get('gis_verified') or top.get('gis_verified')
+                        else 'candidate')
+                map_url = inspect_url(loc['lat'], loc['lon'], query, str(top.get('id') or ''))
+            else:
+                mode = 'empty'
+        except Exception:
+            log.exception('Search failed %s', search_id)
+            store.save_search(search_id, chat, query, loc, 'failed', {})
+            mode = 'error'
+    else:
+        store.save_search(search_id, chat, query, loc, 'pending_index', {})
+
+    await send_text(session, chat, search_message(language, query, mode=mode,
+                    count=count, layer=layer, name=name, map_url=map_url))
 
 
 def is_private_chat(chat_id: str) -> bool:
@@ -455,11 +423,7 @@ async def process_event(data):
                 report_id='GS-'+uuid.uuid4().hex[:8].upper()
                 store.set_chat(chat,'MENU')
                 store.save_report(report_id,chat,loc['lat'],loc['lon'],image)
-                await send_text(
-                    session,
-                    chat,
-                    t(language,'processing_report',report_id=report_id),
-                )
+                await send_text(session, chat, progress_message(language, 'road'))
                 await finish_report(session,chat,report_id,image,loc,language)
                 return
         else:
@@ -478,7 +442,7 @@ async def process_event(data):
             search_id='Q-'+uuid.uuid4().hex[:8].upper()
             store.set_chat(chat,'MENU')
             store.save_search(search_id,chat,query,loc)
-            await send_text(session,chat,t(language,'searching',search_id=search_id))
+            await send_text(session, chat, progress_message(language, 'search'))
             await finish_search(session,chat,search_id,query,loc,language)
             return
         else:
