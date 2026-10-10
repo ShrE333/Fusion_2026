@@ -7,6 +7,7 @@ import { ArrowLeft, Crosshair, MapPin, Satellite, Search } from "lucide-react";
 import { AtlasMap } from "@/components/map/atlas-map";
 import { AtlasNav } from "@/components/shell/atlas-nav";
 import { MapillaryViewer } from "@/components/street-view/mapillary-viewer";
+import { StreetSegmentationOverlay } from "@/components/street-view/street-segmentation-overlay";
 import { searchMapillaryImages, type MapillaryImage } from "@/lib/api/mapillary";
 import { runDiscovery } from "@/lib/discovery/service";
 import { config } from "@/lib/config";
@@ -33,6 +34,8 @@ function InspectionWorkspace(){
   const [notice,setNotice]=useState("");
   const [images,setImages]=useState<MapillaryImage[]>([]);
   const [imageId,setImageId]=useState("");
+  // Actual MapillaryJS frame ID can change when users navigate inside the viewer.
+  const [activeStreetImageId,setActiveStreetImageId]=useState("");
   const [streetError,setStreetError]=useState("");
   const [streetLoading,setStreetLoading]=useState(false);
   const [cameraId,setCameraId]=useState(0);
@@ -85,14 +88,14 @@ function InspectionWorkspace(){
     const counter=streetRequestId;
     const controller=new AbortController();
     const timer=setTimeout(()=>{
-    setStreetError("");setImages([]);setImageId("");
+    setStreetError("");setImages([]);setImageId("");setActiveStreetImageId("");
     setStreetLoading(true);
     searchMapillaryImages(streetLocation,controller.signal).then(found=>{
       if(current!==streetRequestId.current||controller.signal.aborted)return;
       const sorted=[...found].sort((a,b)=>
         Math.hypot(a.coordinates[0]-streetLocation[0],a.coordinates[1]-streetLocation[1]) -
         Math.hypot(b.coordinates[0]-streetLocation[0],b.coordinates[1]-streetLocation[1]));
-      setImages(sorted);if(sorted.length)setImageId(sorted[0].id);
+      setImages(sorted);if(sorted.length){setImageId(sorted[0].id);setActiveStreetImageId(sorted[0].id);}
       else setStreetError("No Mapillary street images for this nearby search area. No other city's imagery is substituted.");
     }).catch(e=>{if(current===streetRequestId.current&&!controller.signal.aborted)setStreetError(e instanceof Error?e.message:"Mapillary request failed");})
       .finally(()=>{if(current===streetRequestId.current&&!controller.signal.aborted)setStreetLoading(false);});
@@ -122,9 +125,13 @@ function InspectionWorkspace(){
         {view==="street"&&<section className="inspect-street">
           {streetLoading&&<div className="inspect-street-message">Looking up Mapillary captures near this exact location…</div>}
           {streetError&&<div className="inspect-street-message" role="status">{streetError}</div>}
-          {imageId&&config.mapillaryAccessToken&&<div className="inspect-viewer"><MapillaryViewer key={imageId} imageId={imageId} accessToken={config.mapillaryAccessToken} onLoaded={()=>{}} onFailure={()=>setStreetError("This provider capture could not load. Choose another image.")}/></div>}
-          {!!images.length&&<div className="inspect-street-controls"><span>Mapillary images: {images.length} · nearest first</span><select value={imageId} onChange={e=>setImageId(e.target.value)} aria-label="Select street image">{images.map((im,i)=><option key={im.id} value={im.id}>{i+1}. {im.id} · {im.coordinates[1].toFixed(5)}, {im.coordinates[0].toFixed(5)}</option>)}</select>{imageId&&<a target="_blank" rel="noreferrer" href={`https://www.mapillary.com/app/?pKey=${encodeURIComponent(imageId)}`}>Open capture on Mapillary ↗</a>}</div>}
-          <small>Mapillary gives interactive geotagged street imagery and navigation. This is not a true 3D reconstructed city model.</small>
+          {imageId&&config.mapillaryAccessToken&&<div className="inspect-viewer">
+            {/* Reuse the existing queued AI panel, without changing the 3D viewer or backend. */}
+            <StreetSegmentationOverlay imageId={activeStreetImageId || imageId}/>
+            <MapillaryViewer key={imageId} imageId={imageId} accessToken={config.mapillaryAccessToken} onLoaded={setActiveStreetImageId} onFailure={()=>setStreetError("This provider capture could not load. Choose another image.")}/>
+          </div>}
+          {!!images.length&&<div className="inspect-street-controls"><span>Mapillary images: {images.length} · nearest first</span><select value={imageId} onChange={e=>{setImageId(e.target.value);setActiveStreetImageId(e.target.value);}} aria-label="Select street image">{images.map((im,i)=><option key={im.id} value={im.id}>{i+1}. {im.id} · {im.coordinates[1].toFixed(5)}, {im.coordinates[0].toFixed(5)}</option>)}</select>{imageId&&<a target="_blank" rel="noreferrer" href={`https://www.mapillary.com/app/?pKey=${encodeURIComponent(imageId)}`}>Open capture on Mapillary ↗</a>}</div>}
+          <small>Mapillary imagery · 2D AI analysis.</small>
         </section>}
         <aside className="inspect-results"><b>{results.length} returned feature{results.length===1?"":"s"}</b><small>Choose any result to highlight its geometry. OSM footprints retain their GIS provenance; SkyCLIP rectangles mark imagery tiles.</small>
           {results.map(r=><button key={r.id} onClick={()=>{setSelected(r);setView("map");const b=r.bounds;if(b){const id=cameraId+1;setCameraId(id);setCameraTarget({id,coordinates:[(b[0]+b[2])/2,(b[1]+b[3])/2],zoom:16});}}} className={selected?.id===r.id?"active":""}><strong>{r.title}</strong><span>{r.status==="gis_verified"?"GIS polygon / geometry":"SkyCLIP tile candidate"} · {r.source}</span></button>)}

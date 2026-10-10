@@ -29,3 +29,17 @@
 .inspect-inner>footer{margin-top:10px;color:#c5c5be;font-size:9px;line-height:1.4}
 @media(max-width:800px){.inspect-inner{margin-left:55px;padding:10px}.inspect-header{align-items:flex-start;flex-wrap:wrap}.inspect-toggle{width:100%}.inspect-toggle button{flex:1;padding:11px 6px}.inspect-workspace{height:auto;min-height:0;display:flex;flex-direction:column;margin-top:9px}.inspect-map,.inspect-street{height:52dvh;min-height:325px;flex:none}.inspect-results{max-height:32dvh;min-height:155px;flex:none}.inspect-map-caption{font-size:9px;bottom:5px}.inspect-page .world-rail{width:48px}.inspect-page .world-rail a{width:40px}.inspect-street>small{max-width:170px}.inspect-street-controls{align-items:stretch;flex-direction:column}.inspect-viewer{bottom:100px}}
 @media(max-width:410px){.inspect-inner{margin-left:50px;padding:7px}.inspect-header small{font-size:9px}.inspect-map,.inspect-street{height:48dvh}.inspect-search input{font-size:12px}.inspect-results{max-height:36dvh}}
+/* WhatsApp /inspect#street: expose the shared queued AI toggle on desktop and mobile. */
+.inspect-viewer{min-height:0}
+/* Separate toggle/header strip from the untouched Mapillary canvas and controls. */
+.inspect-viewer .mapillary-viewer-wrap{top:56px;height:auto}
+.inspect-street>small{left:12px;right:auto;max-width:calc(100% - 180px);pointer-events:none}
+.inspect-viewer .geosathi-ai-wrap{top:8px;right:12px;z-index:20}
+.inspect-viewer .geosathi-ai-toggle{min-height:44px}
+.inspect-viewer .geosathi-ai-inspector{max-height:min(45dvh,380px)}
+@media(max-width:800px){
+  .inspect-street{min-height:420px}
+  .inspect-street>small{left:8px;font-size:8px;line-height:1.2}
+  .inspect-viewer .geosathi-ai-wrap{top:8px;right:8px;max-width:calc(100% - 16px)}
+  .inspect-viewer .geosathi-ai-inspector{width:min(320px,calc(100vw - 95px));max-height:36dvh}
+}
