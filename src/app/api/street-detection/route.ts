@@ -13,6 +13,13 @@ const DEFAULT_SEGMENTOR = "https://geosathi-segmentation-api-883668519860.asia-s
 const json = (value: unknown, status = 200) => NextResponse.json(value, {
   status, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
 });
+const rateLimited = (source: string, header: string | null) => {
+  // Only a bounded numeric Retry-After value is forwarded.
+  const seconds = header && /^\d+$/.test(header.trim()) ? Math.min(300, Math.max(15, Number(header.trim()))) : 60;
+  return NextResponse.json({ error: source + " is temporarily rate-limited. Retry later." }, {
+    status: 429, headers: { "Cache-Control": "no-store", "Retry-After": String(seconds) },
+  });
+};
 const validId = (x: unknown): x is string => typeof x === "string" && /^\d{5,30}$/.test(x);
 const allowedImageOrigin = (raw: string) => {
   try {
@@ -53,6 +60,7 @@ export async function POST(request: Request) {
       headers: { Authorization: `OAuth ${token}`, Accept: "application/json" },
       cache: "no-store", redirect: "error", signal: AbortSignal.any([request.signal, AbortSignal.timeout(12000)]),
     });
+    if (metadata.status === 429) return rateLimited("Mapillary", metadata.headers.get("retry-after"));
     if (metadata.status === 401 || metadata.status === 403) return json({ error: "Mapillary authentication rejected the server token." }, 502);
     if (!metadata.ok) return json({ error: `Mapillary image metadata unavailable (HTTP ${metadata.status}).` }, 502);
     const imageInfo = await metadata.json() as { id?: unknown; thumb_1024_url?: unknown };
@@ -62,6 +70,7 @@ export async function POST(request: Request) {
     const photo = await fetch(imageInfo.thumb_1024_url, {
       cache: "no-store", redirect: "error", signal: AbortSignal.any([request.signal, AbortSignal.timeout(15000)]),
     });
+    if (photo.status === 429) return rateLimited("Mapillary image CDN", photo.headers.get("retry-after"));
     const imageType = (photo.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
     if (!photo.ok || !["image/jpeg", "image/png", "image/webp"].includes(imageType)) {
       return json({ error: "The selected Mapillary image is unavailable." }, 502);
@@ -77,6 +86,7 @@ export async function POST(request: Request) {
     const response = await fetch(`${apiOrigin.toString().replace(/\/$/, "")}/segment`, {
       method: "POST", body: data, cache: "no-store", redirect: "error", signal: AbortSignal.any([request.signal, AbortSignal.timeout(55_000)]),
     });
+    if (response.status === 429) return rateLimited("Mask2Former", response.headers.get("retry-after"));
     if (!response.ok) return json({ error: response.status === 503 ? "Mask2Former is warming up or unavailable; retry shortly." : `Segmentation provider returned HTTP ${response.status}.` }, 502);
     const advertised = Number(response.headers.get("content-length") || "0");
     if (advertised > 4_000_000) return json({ error: "Segmentation response exceeds Vercel's size limit." }, 502);

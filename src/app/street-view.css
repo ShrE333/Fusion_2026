@@ -80,3 +80,11 @@
 .geosathi-ai-classes span{padding:4px 7px;border-radius:5px;background:#323b42;font:10px system-ui}
 .geosathi-ai-note{color:#c8cbc9}
 @media(max-width:800px){.geosathi-ai-wrap{top:8px;right:8px}.geosathi-ai-inspector{max-height:51dvh;width:min(320px,calc(100vw - 100px))}}
+
+/* Queued Live AI controls. Scoped to the existing Street View inspector. */
+.geosathi-queue-check{display:flex;align-items:center;gap:8px;font:600 11px/1.4 system-ui;cursor:pointer}
+.geosathi-queue-check input{width:16px;height:16px;accent-color:#ffd84d}
+.geosathi-queue-rate{display:grid;gap:5px;font:11px/1.4 system-ui}
+.geosathi-queue-rate input{width:100%;accent-color:#ffd84d}
+.geosathi-queue-retry{min-height:34px;padding:8px 12px;border:1px solid #ffd84d;border-radius:8px;background:#ffd84d;color:#242424;font:700 11px system-ui;cursor:pointer}
+.geosathi-queue-retry:disabled{cursor:wait;opacity:.5}
